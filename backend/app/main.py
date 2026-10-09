@@ -1,17 +1,28 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine
 from app.models import Base
+from app.services.scheduler import start_scheduler, stop_scheduler
 
 # Crear tablas directamente en la BD (útil en SQLite para desarrollo rápido inicial)
 Base.metadata.create_all(bind=engine)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Inicialización del planificador en segundo plano
+    start_scheduler()
+    yield
+    # Detención controlada al apagar el servidor
+    stop_scheduler()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Backend de gestión de carteras bimonetarias (USD/ARS CCL/MEP) y control de riesgo financiero.",
     version="0.1.0",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan,
 )
 
 # CORS para permitir conexión del futuro frontend web
