@@ -43,3 +43,8 @@ def sync_asset_price(asset_id: int, db: Session = Depends(get_db)):
     if not price_record:
         raise HTTPException(status_code=502, detail=f"No se pudo obtener precio para ticker {asset.ticker}")
     return price_record
+
+@router.get("/merval-panel", summary="Panel general de acciones líderes del Merval")
+def get_merval_panel(force_refresh: bool = False):
+    """Retorna las cotizaciones en tiempo real del panel líder de Merval con apertura, cierre anterior y variación."""
+    return MarketDataService.get_merval_panel(force_refresh=force_refresh)

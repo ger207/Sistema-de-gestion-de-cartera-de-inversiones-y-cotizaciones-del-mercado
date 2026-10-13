@@ -140,22 +140,22 @@ class PortfolioService:
                 "asset_id": asset.id,
                 "ticker": asset.ticker,
                 "name": asset.name,
-                "asset_class": asset.asset_class,
-                "quantity": qty,
-                "latest_unit_price": unit_price,
-                "quote_currency": asset.currency,
+                "asset_class": asset.asset_class.value if hasattr(asset.asset_class, "value") else str(asset.asset_class),
+                "quantity": float(qty),
+                "latest_unit_price": float(unit_price),
+                "quote_currency": asset.currency.value if hasattr(asset.currency, "value") else str(asset.currency),
                 
                 # Métricas en Moneda Dura (USD) - RENDIMIENTO REAL
-                "cost_basis_usd": round(cost_usd, 2),
-                "current_value_usd": round(current_market_usd, 2),
-                "unrealized_pnl_usd": round(pnl_usd, 2),
-                "pnl_pct_usd": round(pnl_pct_usd, 2),
+                "cost_basis_usd": float(round(cost_usd, 2)),
+                "current_value_usd": float(round(current_market_usd, 2)),
+                "unrealized_pnl_usd": float(round(pnl_usd, 2)),
+                "pnl_pct_usd": float(round(pnl_pct_usd, 2)),
 
                 # Métricas en Pesos (ARS) - VALOR NOMINAL
-                "cost_basis_ars": round(cost_ars, 2),
-                "current_value_ars": round(current_market_ars, 2),
-                "unrealized_pnl_ars": round(pnl_ars, 2),
-                "pnl_pct_ars": round(pnl_pct_ars, 2),
+                "cost_basis_ars": float(round(cost_ars, 2)),
+                "current_value_ars": float(round(current_market_ars, 2)),
+                "unrealized_pnl_ars": float(round(pnl_ars, 2)),
+                "pnl_pct_ars": float(round(pnl_pct_ars, 2)),
             })
 
             total_value_usd += current_market_usd
@@ -170,16 +170,16 @@ class PortfolioService:
 
         return {
             "portfolio_id": portfolio_id,
-            "valuation_fx_type": fx_type,
-            "fx_rate_applied": current_fx_rate,
-            "total_value_usd": round(total_value_usd, 2),
-            "total_cost_usd": round(total_cost_usd, 2),
-            "total_pnl_usd": round(total_pnl_usd, 2),
-            "total_pnl_pct_usd": round(total_pnl_pct_usd, 2),
-            "total_value_ars": round(total_value_ars, 2),
-            "total_cost_ars": round(total_cost_ars, 2),
-            "total_pnl_ars": round(total_pnl_ars, 2),
-            "total_pnl_pct_ars": round(total_pnl_pct_ars, 2),
+            "valuation_fx_type": fx_type.value if hasattr(fx_type, "value") else str(fx_type),
+            "fx_rate_applied": float(current_fx_rate),
+            "total_value_usd": float(round(total_value_usd, 2)),
+            "total_cost_usd": float(round(total_cost_usd, 2)),
+            "total_pnl_usd": float(round(total_pnl_usd, 2)),
+            "total_pnl_pct_usd": float(round(total_pnl_pct_usd, 2)),
+            "total_value_ars": float(round(total_value_ars, 2)),
+            "total_cost_ars": float(round(total_cost_ars, 2)),
+            "total_pnl_ars": float(round(total_pnl_ars, 2)),
+            "total_pnl_pct_ars": float(round(total_pnl_pct_ars, 2)),
             "holdings": holdings_summary,
-            "calculated_at": datetime.now(timezone.utc),
+            "calculated_at": datetime.now(timezone.utc).isoformat(),
         }

@@ -129,3 +129,91 @@ class MarketDataService:
             logger.error(f"Error sincronizando cotización para {asset.ticker}: {str(e)}")
             db.rollback()
             return None
+
+    # Caché en memoria para el panel Merval (evita llamadas repetitivas y se renueva cada 5 min)
+    _merval_cache: List[Dict[str, Any]] = []
+    _merval_cache_timestamp: Optional[datetime] = None
+
+    MERVAL_COMPONENTS = [
+        ("GGAL.BA", "Grupo Financiero Galicia"),
+        ("YPFD.BA", "YPF S.A."),
+        ("PAMP.BA", "Pampa Energía"),
+        ("BMA.BA", "Banco Macro"),
+        ("ALUA.BA", "Aluar"),
+        ("TXAR.BA", "Ternium Argentina"),
+        ("CRES.BA", "Cresud"),
+        ("EDN.BA", "Edenor"),
+        ("TGSU2.BA", "TGS (Gas del Sur)"),
+        ("TRAN.BA", "Transener"),
+        ("CEPU.BA", "Central Puerto"),
+        ("LOMA.BA", "Loma Negra"),
+        ("VALO.BA", "Banco de Valores"),
+        ("MIRG.BA", "Mirgor"),
+        ("SUPV.BA", "Grupo Supervielle"),
+        ("BYMA.BA", "Bolsas y Mercados Arg."),
+        ("COME.BA", "Soc. Comercial del Plata"),
+        ("BBAR.BA", "BBVA Argentina"),
+        ("TECO2.BA", "Telecom Argentina"),
+    ]
+
+    @classmethod
+    def get_merval_panel(cls, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        """
+        Devuelve el panel de cotizaciones de acciones líderes del Merval con:
+        - Ticker
+        - Precio Actual
+        - Precio de Apertura
+        - Precio de Cierre Anterior
+        - Variación porcentual diaria (%)
+        Se actualiza y cachea automáticamente cada 5 minutos.
+        """
+        now = datetime.now(timezone.utc)
+        if not force_refresh and cls._merval_cache and cls._merval_cache_timestamp:
+            elapsed = (now - cls._merval_cache_timestamp).total_seconds()
+            if elapsed < 300:  # 5 minutos
+                return cls._merval_cache
+
+        try:
+            tickers = [t[0] for t in cls.MERVAL_COMPONENTS]
+            df = yf.download(tickers, period="5d", interval="1d", progress=False)
+            
+            panel = []
+            for ticker, name in cls.MERVAL_COMPONENTS:
+                try:
+                    close_series = df["Close"][ticker].dropna() if "Close" in df and ticker in df["Close"] else None
+                    open_series = df["Open"][ticker].dropna() if "Open" in df and ticker in df["Open"] else None
+                    high_series = df["High"][ticker].dropna() if "High" in df and ticker in df["High"] else None
+                    low_series = df["Low"][ticker].dropna() if "Low" in df and ticker in df["Low"] else None
+
+                    if close_series is not None and len(close_series) >= 1:
+                        current_price = float(close_series.iloc[-1])
+                        prev_close = float(close_series.iloc[-2]) if len(close_series) >= 2 else current_price
+                        open_price = float(open_series.iloc[-1]) if open_series is not None and len(open_series) >= 1 else current_price
+                        high_price = float(high_series.iloc[-1]) if high_series is not None and len(high_series) >= 1 else current_price
+                        low_price = float(low_series.iloc[-1]) if low_series is not None and len(low_series) >= 1 else current_price
+                        
+                        change_abs = current_price - prev_close
+                        change_pct = ((change_abs / prev_close) * 100.0) if prev_close > 0 else 0.0
+
+                        panel.append({
+                            "ticker": ticker,
+                            "symbol": ticker.replace(".BA", ""),
+                            "name": name,
+                            "current_price": round(current_price, 2),
+                            "open_price": round(open_price, 2),
+                            "previous_close": round(prev_close, 2),
+                            "high_price": round(high_price, 2),
+                            "low_price": round(low_price, 2),
+                            "change_abs": round(change_abs, 2),
+                            "change_pct": round(change_pct, 2),
+                        })
+                except Exception as ex:
+                    logger.warning(f"Error procesando cotización Merval para {ticker}: {ex}")
+
+            if panel:
+                cls._merval_cache = panel
+                cls._merval_cache_timestamp = now
+            return cls._merval_cache
+        except Exception as e:
+            logger.error(f"Error descargando panel Merval: {e}")
+            return cls._merval_cache or []
