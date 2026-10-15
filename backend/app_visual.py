@@ -10,7 +10,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 # ==============================================================================
 # CONFIGURACIÓN GENERAL Y ESTILO DE PÁGINA
@@ -85,6 +85,83 @@ def post_api(endpoint: str, payload: dict) -> Optional[requests.Response]:
 
 
 # ==============================================================================
+# MOTOR INTELIGENTE DE AUTODETECCIÓN DE INSTRUMENTO
+# ==============================================================================
+def auto_detect_instrument(raw_ticker: str, existing_assets: list) -> Tuple[str, str, str, str, str]:
+    """
+    Analiza el ticker ingresado por el usuario y detecta automáticamente:
+    (ticker_normalizado, nombre_descriptivo, clase_activo, moneda_sugerida, etiqueta_visual).
+    """
+    clean = raw_ticker.strip().upper()
+    if not clean:
+        return "", "", "EQUITY_LOCAL", "ARS", "Sin Ticker"
+
+    clean_no_ba = clean.replace(".BA", "")
+
+    # 1. Verificar si ya existe en el catálogo registrado de la base de datos
+    for a in existing_assets:
+        t_exist = a.get("ticker", "").upper()
+        if t_exist == clean or t_exist == f"{clean}.BA" or t_exist == clean_no_ba:
+            cls = a.get("asset_class", "EQUITY_LOCAL")
+            curr = a.get("currency", "ARS")
+            name = a.get("name", clean)
+            display_map = {
+                "EQUITY_LOCAL": "🏛️ Acción Local Merval",
+                "CEDEAR": "🌎 CEDEAR (Activo Internacional)",
+                "SOVEREIGN_BOND": "📜 Bono Soberano / Renta Fija",
+                "CRYPTO_SPOT": "🪙 Criptomoneda",
+                "CRYPTO_FUTURES": "⚡ Futuros Cripto",
+            }
+            return a["ticker"], name, cls, curr, display_map.get(cls, cls)
+
+    # 2. Criptomonedas comunes
+    CRYPTO_SET = {
+        "BTC", "ETH", "SOL", "USDT", "BNB", "XRP", "ADA", "DOGE", "DOT", "AVAX",
+        "LINK", "MATIC", "LTC", "DAI", "USDC", "PEPE", "SHIB", "NEAR", "RENDER"
+    }
+    if clean in CRYPTO_SET or clean.endswith("-USD") or clean.endswith("-USDT") or clean.endswith("USDT"):
+        norm = clean if ("-" in clean or clean.endswith("USDT")) else f"{clean}-USD"
+        return norm, f"{clean_no_ba} (Cripto)", "CRYPTO_SPOT", "USD", "🪙 Criptomoneda Spot"
+
+    # 3. Bonos Soberanos / Renta Fija (AL30, GD30, AE38, TX26, T2X5, BOPREAL, etc.)
+    BOND_PREFIXES = ("AL", "GD", "AE", "TX", "T2X", "BP", "BOP", "TV", "S3", "S1", "TO", "DICP", "PARP")
+    if clean.startswith(BOND_PREFIXES) and any(c.isdigit() for c in clean):
+        norm = clean if clean.endswith(".BA") else f"{clean}.BA"
+        return norm, f"Bono Soberano {clean_no_ba}", "SOVEREIGN_BOND", "ARS", "📜 Bono Soberano"
+
+    # 4. CEDEARs populares de ByMA
+    CEDEARS_SET = {
+        "SPY", "QQQ", "DIA", "AAPL", "NVDA", "TSLA", "MELI", "MSFT", "AMZN", "META", "GOOGL", "GOOG",
+        "KO", "VIST", "BABA", "PBR", "BBD", "DISN", "DIS", "AMD", "VALE", "WMT", "XOM", "JNJ", "MCD",
+        "GOLD", "GLOB", "DESP", "COIN", "PYPL", "NFLX", "INTC", "IBM", "BA", "CAT", "GE", "JPM", "BAC",
+        "C", "V", "MA", "PEP", "PG", "UNH", "LLY", "NKE", "ORCL", "CSCO", "CRM", "UBER", "ABBV", "BIOX",
+        "HMY", "PAAS", "AUY", "ARCOS", "TEN", "TX", "BBVA", "SAN", "ITUB", "IWM", "MO", "PM", "BIIB"
+    }
+    if clean_no_ba in CEDEARS_SET:
+        norm = f"{clean_no_ba}.BA"
+        return norm, f"{clean_no_ba} (CEDEAR)", "CEDEAR", "ARS", "🌎 CEDEAR"
+
+    # 5. Acciones Líderes y del Panel General del Merval
+    MERVAL_SET = {
+        "GGAL", "YPFD", "PAMP", "BMA", "ALUA", "TXAR", "CRES", "EDN", "TGSU2", "TRAN", "CEPU", "LOMA",
+        "VALO", "MIRG", "SUPV", "BYMA", "COME", "BBAR", "TECO2", "HARG", "AGRO", "AUSO", "BHIP", "BOLT",
+        "BPAT", "CADO", "CAPX", "CARC", "CELU", "CGPA2", "CTIO", "DGCU2", "FERR", "GCLA", "GRIM", "HAVA",
+        "INVJ", "IRSA", "LEDE", "LONG", "METR", "MOLI", "MORI", "OEST", "PATA", "POLL", "RIGO", "SAMI",
+        "SEMI", "TGLT", "TGNO4"
+    }
+    if clean_no_ba in MERVAL_SET:
+        norm = f"{clean_no_ba}.BA"
+        return norm, f"{clean_no_ba} (Acción Merval)", "EQUITY_LOCAL", "ARS", "🏛️ Acción Local Merval"
+
+    # 6. Heurística general de contingencia
+    if "-" in clean or "USD" in clean:
+        return clean, f"{clean} (Cripto)", "CRYPTO_SPOT", "USD", "🪙 Criptomoneda"
+    
+    norm = clean if clean.endswith(".BA") else f"{clean}.BA"
+    return norm, f"{clean_no_ba}", "EQUITY_LOCAL", "ARS", "📈 Instrumento Local"
+
+
+# ==============================================================================
 # VERIFICACIÓN DE ESTADO DEL SERVIDOR FASTAPI
 # ==============================================================================
 backend_health = fetch_api("/../../health")
@@ -108,10 +185,11 @@ portfolio_id = active_portfolio["id"]
 accounts = active_portfolio.get("accounts", [])
 # Cuenta por defecto para imputar operaciones automáticamente
 default_account_id = accounts[0]["id"] if accounts else None
+existing_assets_cache = fetch_api("/assets/") or []
 
 
 # ==============================================================================
-# SIDEBAR: FORMULARIO INTELIGENTE DE TRANSACCIONES (CON COMISIÓN EN %)
+# SIDEBAR: FORMULARIO INTELIGENTE DE TRANSACCIONES (AUTODETECCIÓN DE CLASE)
 # ==============================================================================
 st.sidebar.image("https://img.icons8.com/fluency/96/bullish.png", width=64)
 st.sidebar.title("Gestión de Cartera")
@@ -122,49 +200,22 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("➕ Nueva Operación")
 
 with st.sidebar.form(key="transaction_form", clear_on_submit=False):
-    # 1. Filtro por clase de activo
-    asset_class_choice = st.selectbox(
-        "Clase de Instrumento:",
-        options=["CEDEARs", "Acciones Merval", "Bonos Soberanos", "Criptomonedas"],
-        help="El sistema normalizará automáticamente el ticker según la clase elegida."
-    )
-
-    # 2. Entrada inteligente de Ticker
+    # 1. Entrada inteligente de Ticker (SIN selector manual de clase)
     ticker_input = st.text_input(
         "Ticker / Símbolo:",
-        placeholder="Ej: AAPL, GGAL, AL30, BTC",
-        help="Escribe el ticker base. El sistema le aplicará el sufijo correspondiente."
+        placeholder="Ej: AAPL, GGAL, AL30, BTC...",
+        help="Escribe el ticker. El sistema detectará automáticamente si es CEDEAR, Acción Merval, Bono o Cripto."
     ).strip().upper()
 
-    # Normalización automática del ticker
-    normalized_ticker = ticker_input
-    asset_class_enum = "EQUITY_LOCAL"
-    default_currency = "ARS"
+    # Detección automática en tiempo real
+    normalized_ticker, detected_name, detected_class, default_currency, display_class = auto_detect_instrument(
+        ticker_input, existing_assets_cache
+    )
 
     if ticker_input:
-        if asset_class_choice == "CEDEARs":
-            asset_class_enum = "CEDEAR"
-            normalized_ticker = ticker_input if ticker_input.endswith(".BA") else f"{ticker_input}.BA"
-            default_currency = "ARS"
-        elif asset_class_choice == "Acciones Merval":
-            asset_class_enum = "EQUITY_LOCAL"
-            normalized_ticker = ticker_input if ticker_input.endswith(".BA") else f"{ticker_input}.BA"
-            default_currency = "ARS"
-        elif asset_class_choice == "Bonos Soberanos":
-            asset_class_enum = "SOVEREIGN_BOND"
-            normalized_ticker = ticker_input if ticker_input.endswith(".BA") else f"{ticker_input}.BA"
-            default_currency = "ARS"
-        elif asset_class_choice == "Criptomonedas":
-            asset_class_enum = "CRYPTO_SPOT"
-            if not ("-" in ticker_input or ticker_input.endswith("USDT") or ticker_input.endswith("USD")):
-                normalized_ticker = f"{ticker_input}-USD"
-            else:
-                normalized_ticker = ticker_input
-            default_currency = "USD"
+        st.info(f"🔍 **Detectado:** {display_class}<br>`{normalized_ticker}`", icon="💡")
 
-        st.caption(f"Ticker interpretado: `{normalized_ticker}` ({asset_class_enum})")
-
-    # 3. Tipo de Operación
+    # 2. Tipo de Operación
     tx_type = st.selectbox(
         "Tipo de Operación:",
         options=["BUY", "SELL"],
@@ -182,7 +233,8 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
         currency = st.selectbox(
             "Moneda:",
             options=["ARS", "USD", "USDT"],
-            index=0 if default_currency == "ARS" else 1
+            index=0 if default_currency == "ARS" else 1,
+            help="Moneda en la que se pacta y liquida la transacción."
         )
     with col_fee_pct:
         # Requerimiento: Comisión en porcentaje (%) ingresada por el usuario
@@ -193,7 +245,7 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
             value=0.50,
             step=0.05,
             format="%.2f",
-            help="Porcentaje de comisión o arancel que cobra tu broker o exchange."
+            help="Porcentaje de arancel cobrado por tu broker o exchange."
         )
 
     # Cálculo dinámico de subtotal y comisión
@@ -208,7 +260,7 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
         unsafe_allow_html=True
     )
 
-    notes = st.text_input("Notas (Opcional):", placeholder="Ej: Compra periódica")
+    notes = st.text_input("Notas (Opcional):", placeholder="Ej: Compra mensual DCA")
 
     submit_button = st.form_submit_button("🚀 Registrar Transacción", use_container_width=True)
 
@@ -216,18 +268,17 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
         if not ticker_input:
             st.sidebar.error("Debes ingresar un ticker válido.")
         elif not default_account_id:
-            st.sidebar.error("No se encontró una cuenta de custodia para imputar la operación.")
+            st.sidebar.error("No se encontró una cuenta de custodia activa para registrar la operación.")
         else:
             # A. Asegurar existencia del activo en el catálogo
-            existing_assets = fetch_api("/assets/") or []
-            asset_obj = next((a for a in existing_assets if a["ticker"] == normalized_ticker), None)
+            asset_obj = next((a for a in existing_assets_cache if a["ticker"] == normalized_ticker), None)
 
             if not asset_obj:
-                with st.spinner(f"Registrando {normalized_ticker} en el catálogo..."):
+                with st.spinner(f"Registrando {normalized_ticker} en el catálogo como {display_class}..."):
                     new_asset_payload = {
                         "ticker": normalized_ticker,
-                        "name": f"{ticker_input} ({asset_class_choice})",
-                        "asset_class": asset_class_enum,
+                        "name": detected_name or f"{ticker_input}",
+                        "asset_class": detected_class,
                         "currency": currency,
                         "is_active": True
                     }
@@ -235,7 +286,7 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
                     if create_asset_res and create_asset_res.status_code in [200, 201]:
                         asset_obj = create_asset_res.json()
                     else:
-                        st.sidebar.error("Error al registrar activo en el catálogo.")
+                        st.sidebar.error("Error al registrar el activo en el catálogo.")
                         st.stop()
 
             # B. Obtener tipo de cambio CCL actual para imputar conversión histórica
@@ -246,7 +297,7 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
                 if ccl_item:
                     ccl_rate = safe_float(ccl_item.get("sell_price"), 1250.0)
 
-            # C. Registrar transacción en el Ledger con la comisión calculada
+            # C. Registrar transacción en el Ledger con la comisión en monto monetario calculada
             tx_payload = {
                 "account_id": default_account_id,
                 "asset_id": asset_obj["id"],
@@ -258,7 +309,7 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
                 "fee": round(calculated_fee_amount, 2),
                 "fx_rate": ccl_rate,
                 "fx_rate_type": "CCL",
-                "notes": notes or f"{asset_class_choice} ({fee_percentage}% comisión)"
+                "notes": notes or f"{display_class} ({fee_percentage}% comisión)"
             }
 
             res = post_api("/transactions/", tx_payload)
@@ -278,7 +329,7 @@ if st.sidebar.button("🔄 Sincronizar Cotizaciones Ahora", use_container_width=
         fetch_api("/market-data/cedears-panel?force_refresh=true")
         fetch_api("/market-data/crypto-panel?force_refresh=true")
         st.cache_data.clear()
-        st.sidebar.success("Mercado sincronizado.")
+        st.sidebar.success("Mercado sincronizado con éxito.")
         st.rerun()
 
 
@@ -311,7 +362,7 @@ if not valuation_data:
 
 
 # ==============================================================================
-# DASHBOARD PRINCIPAL: MÉTRICAS CLAVE (KPIs BLINDADOS CONTRA STRINGS)
+# DASHBOARD PRINCIPAL: MÉTRICAS CLAVE (KPIs)
 # ==============================================================================
 ccl_rate_used = safe_float(valuation_data.get("fx_rate_applied"), 1250.0)
 
@@ -372,11 +423,9 @@ st.info(
 # ==============================================================================
 # PESTAÑAS (TABS) DE NAVEGACIÓN
 # ==============================================================================
-tab_main, tab_merval, tab_cedears, tab_crypto, tab_dolar, tab_transactions, tab_risk = st.tabs([
+tab_main, tab_quotes, tab_dolar, tab_transactions, tab_risk = st.tabs([
     "📊 Mi Cartera & Tenencias",
-    "🏛️ Panel Acciones Merval",
-    "🌎 Panel CEDEARs",
-    "🪙 Criptomonedas (BTC, ETH, SOL)",
+    "📈 Cotizaciones",
     "💵 Dólar en Tiempo Real",
     "📜 Historial de Operaciones",
     "⚡ Gestión de Riesgo (Futuros)"
@@ -384,18 +433,23 @@ tab_main, tab_merval, tab_cedears, tab_crypto, tab_dolar, tab_transactions, tab_
 
 
 # ------------------------------------------------------------------------------
-# TAB 1: MI CARTERA, COMPOSICIÓN (TORTA) Y DETALLE DE TENENCIAS CON FILTRO
+# TAB 1: MI CARTERA, COMPOSICIÓN (TORTA) Y DETALLE DE TENENCIAS CON PPP
 # ------------------------------------------------------------------------------
 with tab_main:
     raw_holdings = valuation_data.get("holdings", [])
 
     if raw_holdings:
-        # Normalizar datos de tenencias a floats limpios
+        # Normalizar datos de tenencias a floats limpios incluyendo Precio Promedio de Compra (PPP)
         processed_holdings = []
         for h in raw_holdings:
             item = dict(h)
             item["quantity"] = safe_float(item.get("quantity"))
             item["latest_unit_price"] = safe_float(item.get("latest_unit_price"))
+            
+            # PPP (Precio Promedio de Compra)
+            item["avg_buy_price_usd"] = safe_float(item.get("avg_buy_price_usd"))
+            item["avg_buy_price_ars"] = safe_float(item.get("avg_buy_price_ars"))
+
             item["current_value_usd"] = safe_float(item.get("current_value_usd"))
             item["cost_basis_usd"] = safe_float(item.get("cost_basis_usd"))
             item["unrealized_pnl_usd"] = safe_float(item.get("unrealized_pnl_usd"))
@@ -423,6 +477,7 @@ with tab_main:
         pnl_col = "unrealized_pnl_usd" if is_usd else "unrealized_pnl_ars"
         cost_col = "cost_basis_usd" if is_usd else "cost_basis_ars"
         pct_col = "pnl_pct_usd" if is_usd else "pnl_pct_ars"
+        avg_col = "avg_buy_price_usd" if is_usd else "avg_buy_price_ars"
 
         # ----------------------------------------------------------------------
         # GRÁFICO DE TORTA / COMPOSICIÓN DE ACTIVOS EN TENENCIA
@@ -471,7 +526,7 @@ with tab_main:
         st.markdown("---")
 
         # ----------------------------------------------------------------------
-        # DETALLE DE TODAS LAS TENENCIAS CON FILTRO POR CLASE
+        # DETALLE DE TODAS LAS TENENCIAS CON PRECIO PROMEDIO DE COMPRA (PPP)
         # ----------------------------------------------------------------------
         col_h_title, col_h_filter = st.columns([2, 1])
         with col_h_title:
@@ -490,12 +545,15 @@ with tab_main:
 
         if not df_filtered.empty:
             display_df = df_filtered[[
-                "ticker", "name", "clase_display", "quantity", "latest_unit_price", "quote_currency",
+                "ticker", "name", "clase_display", "quantity",
+                avg_col, "latest_unit_price", "quote_currency",
                 val_col, cost_col, pnl_col, pct_col
             ]].copy()
 
             display_df.columns = [
-                "Ticker", "Nombre", "Clase", "Cantidad", "Últ. Cotización", "Moneda",
+                "Ticker", "Nombre", "Clase", "Cantidad",
+                f"Precio Prom. Compra ({'USD' if is_usd else 'ARS'})",
+                "Últ. Cotización", "Moneda",
                 f"Valor Actual ({'USD' if is_usd else 'ARS'})",
                 f"Costo Base ({'USD' if is_usd else 'ARS'})",
                 f"P&L ({'USD' if is_usd else 'ARS'})",
@@ -505,6 +563,7 @@ with tab_main:
             st.dataframe(
                 display_df.style.format({
                     "Cantidad": "{:,.4f}",
+                    f"Precio Prom. Compra ({'USD' if is_usd else 'ARS'})": "{:,.2f}",
                     "Últ. Cotización": "{:,.2f}",
                     f"Valor Actual ({'USD' if is_usd else 'ARS'})": "{:,.2f}",
                     f"Costo Base ({'USD' if is_usd else 'ARS'})": "{:,.2f}",
@@ -521,234 +580,248 @@ with tab_main:
 
 
 # ------------------------------------------------------------------------------
-# TAB 2: PANEL GENERAL DE ACCIONES DEL MERVAL (EN VIVO - CADA 5 MINUTOS)
+# TAB 2: COTIZACIONES GENERALES (DESPLEGABLE UNIFICADO)
 # ------------------------------------------------------------------------------
-with tab_merval:
-    st.subheader("🏛️ Panel Líder S&P Merval (Acciones Argentinas)")
-    st.caption("Cotizaciones del mercado local actualizadas automáticamente cada 5 minutos vía Yahoo Finance.")
-
-    merval_data = fetch_api("/market-data/merval-panel")
-
-    if merval_data:
-        df_merval = pd.DataFrame(merval_data)
-
-        # KPIs rápidos del Merval
-        df_merval["change_pct_num"] = df_merval["change_pct"].apply(safe_float)
-        top_gainer = df_merval.sort_values(by="change_pct_num", ascending=False).iloc[0]
-        top_loser = df_merval.sort_values(by="change_pct_num", ascending=True).iloc[0]
-
-        col_m1, col_m2, col_m3 = st.columns(3)
-        with col_m1:
-            st.metric("Total Acciones Seguidas", f"{len(df_merval)} empresas")
-        with col_m2:
-            st.metric(
-                "Mayor Alza del Día",
-                f"{top_gainer['symbol']} ${safe_float(top_gainer['current_price']):,.2f}",
-                delta=f"{safe_float(top_gainer['change_pct']):+.2f}%"
-            )
-        with col_m3:
-            st.metric(
-                "Mayor Baja del Día",
-                f"{top_loser['symbol']} ${safe_float(top_loser['current_price']):,.2f}",
-                delta=f"{safe_float(top_loser['change_pct']):+.2f}%",
-                delta_color="inverse"
-            )
-
-        # Buscador por ticker o empresa
-        search_merval = st.text_input("🔍 Buscar en el panel Merval:", placeholder="Ej: GGAL, YPFD, PAMP...").strip().upper()
-        if search_merval:
-            df_merval = df_merval[
-                df_merval["symbol"].str.contains(search_merval) |
-                df_merval["name"].str.upper().str.contains(search_merval)
-            ]
-
-        # Tabla completa formateada
-        df_merval_display = df_merval[[
-            "symbol", "name", "current_price", "change_pct", "open_price", "previous_close", "high_price", "low_price"
-        ]].copy()
-
-        df_merval_display.columns = [
-            "Ticker", "Empresa", "Precio Actual (ARS)", "Var. Diaria (%)",
-            "Apertura (ARS)", "Cierre Anterior (ARS)", "Máx Día", "Mín Día"
-        ]
-
-        st.dataframe(
-            df_merval_display.style.format({
-                "Precio Actual (ARS)": "${:,.2f}",
-                "Var. Diaria (%)": "{:+.2f}%",
-                "Apertura (ARS)": "${:,.2f}",
-                "Cierre Anterior (ARS)": "${:,.2f}",
-                "Máx Día": "${:,.2f}",
-                "Mín Día": "${:,.2f}",
-            }),
-            use_container_width=True
+with tab_quotes:
+    col_q_title, col_q_select = st.columns([2, 1])
+    with col_q_title:
+        st.subheader("📈 Monitor General de Cotizaciones de Mercado")
+        st.caption("Precios actualizados automáticamente cada 5 minutos vía Yahoo Finance.")
+    with col_q_select:
+        market_panel_choice = st.selectbox(
+            "Seleccionar Panel de Mercado:",
+            options=[
+                "🏛️ Acciones Líderes (S&P Merval)",
+                "🌎 Principales CEDEARs (ByMA)",
+                "🪙 Criptomonedas (BTC, ETH, SOL)"
+            ],
+            index=0
         )
-    else:
-        st.warning("No se pudieron obtener cotizaciones del panel Merval en este momento.")
-        if st.button("Reintentar descarga de Merval"):
-            fetch_api("/market-data/merval-panel?force_refresh=true")
-            st.rerun()
 
+    st.markdown("---")
 
-# ------------------------------------------------------------------------------
-# TAB 3: PANEL GENERAL DE CEDEARS (ByMA)
-# ------------------------------------------------------------------------------
-with tab_cedears:
-    st.subheader("🌎 Panel de Principales CEDEARs (ByMA)")
-    st.caption("Cotizaciones de las empresas y ETFs internacionales más operados en Argentina en pesos (ARS), actualizadas cada 5 minutos.")
+    # =========================================================================
+    # VISTA 1: ACCIONES LÍDERES MERVAL
+    # =========================================================================
+    if market_panel_choice == "🏛️ Acciones Líderes (S&P Merval)":
+        st.markdown("### 🏛️ Panel Líder S&P Merval (Acciones Argentinas)")
+        st.caption("Cotizaciones del mercado local de acciones en pesos (ARS).")
 
-    cedears_data = fetch_api("/market-data/cedears-panel")
+        merval_data = fetch_api("/market-data/merval-panel")
 
-    if cedears_data:
-        df_cedears = pd.DataFrame(cedears_data)
+        if merval_data:
+            df_merval = pd.DataFrame(merval_data)
 
-        # KPIs rápidos de CEDEARs
-        df_cedears["change_pct_num"] = df_cedears["change_pct"].apply(safe_float)
-        top_gainer_ced = df_cedears.sort_values(by="change_pct_num", ascending=False).iloc[0]
-        top_loser_ced = df_cedears.sort_values(by="change_pct_num", ascending=True).iloc[0]
+            # KPIs rápidos del Merval
+            df_merval["change_pct_num"] = df_merval["change_pct"].apply(safe_float)
+            top_gainer = df_merval.sort_values(by="change_pct_num", ascending=False).iloc[0]
+            top_loser = df_merval.sort_values(by="change_pct_num", ascending=True).iloc[0]
 
-        col_c1, col_c2, col_c3 = st.columns(3)
-        with col_c1:
-            st.metric("Total CEDEARs Seguidos", f"{len(df_cedears)} activos")
-        with col_c2:
-            st.metric(
-                "Mayor Alza del Día",
-                f"{top_gainer_ced['symbol']} ${safe_float(top_gainer_ced['current_price']):,.2f}",
-                delta=f"{safe_float(top_gainer_ced['change_pct']):+.2f}%"
-            )
-        with col_c3:
-            st.metric(
-                "Mayor Baja del Día",
-                f"{top_loser_ced['symbol']} ${safe_float(top_loser_ced['current_price']):,.2f}",
-                delta=f"{safe_float(top_loser_ced['change_pct']):+.2f}%",
-                delta_color="inverse"
-            )
-
-        # Buscador por ticker o empresa
-        search_ced = st.text_input("🔍 Buscar en el panel CEDEARs:", placeholder="Ej: AAPL, NVDA, SPY, MELI, TSLA, BABA...").strip().upper()
-        if search_ced:
-            df_cedears = df_cedears[
-                df_cedears["symbol"].str.contains(search_ced) |
-                df_cedears["name"].str.upper().str.contains(search_ced)
-            ]
-
-        # Tabla completa formateada
-        df_cedears_display = df_cedears[[
-            "symbol", "name", "current_price", "change_pct", "open_price", "previous_close", "high_price", "low_price"
-        ]].copy()
-
-        df_cedears_display.columns = [
-            "Ticker", "Empresa / ETF", "Precio Actual (ARS)", "Var. Diaria (%)",
-            "Apertura (ARS)", "Cierre Anterior (ARS)", "Máx Día", "Mín Día"
-        ]
-
-        st.dataframe(
-            df_cedears_display.style.format({
-                "Precio Actual (ARS)": "${:,.2f}",
-                "Var. Diaria (%)": "{:+.2f}%",
-                "Apertura (ARS)": "${:,.2f}",
-                "Cierre Anterior (ARS)": "${:,.2f}",
-                "Máx Día": "${:,.2f}",
-                "Mín Día": "${:,.2f}",
-            }),
-            use_container_width=True
-        )
-    else:
-        st.warning("No se pudieron obtener cotizaciones del panel CEDEARs en este momento.")
-        if st.button("Reintentar descarga de CEDEARs"):
-            fetch_api("/market-data/cedears-panel?force_refresh=true")
-            st.rerun()
-
-
-# ------------------------------------------------------------------------------
-# TAB 4: CRIPTOMONEDAS PRINCIPALES (BITCOIN, ETHEREUM, SOLANA)
-# ------------------------------------------------------------------------------
-with tab_crypto:
-    st.subheader("🪙 Criptomonedas Principales (Bitcoin, Ethereum, Solana)")
-    st.caption("Cotizaciones 24/7 en USD y convertidas en tiempo real a Pesos Argentinos (ARS) mediante el Dólar CCL de referencia.")
-
-    crypto_data = fetch_api("/market-data/crypto-panel")
-
-    if crypto_data:
-        # Tarjetas destacadas en 3 columnas (BTC, ETH, SOL)
-        cols_cry = st.columns(len(crypto_data))
-        for idx, coin in enumerate(crypto_data):
-            symbol = coin.get("symbol", "")
-            name = coin.get("name", "")
-            p_usd = safe_float(coin.get("current_price"))
-            p_ars = p_usd * ccl_rate_used
-            chg = safe_float(coin.get("change_pct"))
-            hi_usd = safe_float(coin.get("high_price"))
-            lo_usd = safe_float(coin.get("low_price"))
-
-            icon = "₿" if symbol == "BTC" else ("Ξ" if symbol == "ETH" else "◎")
-
-            with cols_cry[idx]:
-                st.markdown(f"### {icon} {name} ({symbol})")
+            col_m1, col_m2, col_m3 = st.columns(3)
+            with col_m1:
+                st.metric("Total Acciones Seguidas", f"{len(df_merval)} empresas")
+            with col_m2:
                 st.metric(
-                    label="Precio Actual (USD)",
-                    value=f"${p_usd:,.2f} USD",
-                    delta=f"{chg:+.2f}% (24h)"
+                    "Mayor Alza del Día",
+                    f"{top_gainer['symbol']} ${safe_float(top_gainer['current_price']):,.2f}",
+                    delta=f"{safe_float(top_gainer['change_pct']):+.2f}%"
                 )
-                st.caption(f"💵 Equivalente en ARS: **${p_ars:,.2f}** (CCL: ${ccl_rate_used:,.2f})")
-                st.markdown(f"<small>Rango 24h: <b>${lo_usd:,.2f}</b> - <b>${hi_usd:,.2f}</b></small>", unsafe_allow_html=True)
+            with col_m3:
+                st.metric(
+                    "Mayor Baja del Día",
+                    f"{top_loser['symbol']} ${safe_float(top_loser['current_price']):,.2f}",
+                    delta=f"{safe_float(top_loser['change_pct']):+.2f}%",
+                    delta_color="inverse"
+                )
 
-        st.markdown("---")
+            # Buscador por ticker o empresa
+            search_merval = st.text_input("🔍 Buscar en el panel Merval:", placeholder="Ej: GGAL, YPFD, PAMP...").strip().upper()
+            if search_merval:
+                df_merval = df_merval[
+                    df_merval["symbol"].str.contains(search_merval) |
+                    df_merval["name"].str.upper().str.contains(search_merval)
+                ]
 
-        # Gráfico comparativo de variación 24h y Tabla Comparativa
-        df_cry = pd.DataFrame(crypto_data)
-        df_cry["change_pct_num"] = df_cry["change_pct"].apply(safe_float)
-        df_cry["Color"] = df_cry["change_pct_num"].apply(lambda x: "Alza" if x >= 0 else "Baja")
-
-        col_g1, col_g2 = st.columns([1, 1])
-        with col_g1:
-            st.subheader("📊 Variación en 24 Horas (%)")
-            fig_cry_bar = px.bar(
-                df_cry,
-                x="symbol",
-                y="change_pct_num",
-                color="Color",
-                color_discrete_map={"Alza": "#00C853", "Baja": "#D50000"},
-                labels={"symbol": "Criptomoneda", "change_pct_num": "Variación 24h (%)"},
-                text="change_pct_num"
-            )
-            fig_cry_bar.update_traces(texttemplate='%{text:+.2f}%', textposition='outside')
-            fig_cry_bar.update_layout(height=350, showlegend=False, margin=dict(t=20, b=20, l=20, r=20))
-            st.plotly_chart(fig_cry_bar, use_container_width=True)
-
-        with col_g2:
-            st.subheader("📋 Tabla Comparativa Cripto")
-            df_cry_disp = df_cry.copy()
-            df_cry_disp["precio_ars"] = df_cry_disp["current_price"].apply(safe_float) * ccl_rate_used
-            
-            df_disp = df_cry_disp[[
-                "symbol", "name", "current_price", "precio_ars", "change_pct", "open_price", "previous_close", "high_price", "low_price"
+            df_merval_display = df_merval[[
+                "symbol", "name", "current_price", "change_pct", "open_price", "previous_close", "high_price", "low_price"
             ]].copy()
-            df_disp.columns = [
-                "Símbolo", "Nombre", "Precio (USD)", "Precio (ARS)", "Var. 24h (%)",
-                "Apertura (USD)", "Cierre Ant. (USD)", "Máx 24h", "Mín 24h"
+
+            df_merval_display.columns = [
+                "Ticker", "Empresa", "Precio Actual (ARS)", "Var. Diaria (%)",
+                "Apertura (ARS)", "Cierre Anterior (ARS)", "Máx Día", "Mín Día"
             ]
+
             st.dataframe(
-                df_disp.style.format({
-                    "Precio (USD)": "${:,.2f}",
-                    "Precio (ARS)": "${:,.2f}",
-                    "Var. 24h (%)": "{:+.2f}%",
-                    "Apertura (USD)": "${:,.2f}",
-                    "Cierre Ant. (USD)": "${:,.2f}",
-                    "Máx 24h": "${:,.2f}",
-                    "Mín 24h": "${:,.2f}",
+                df_merval_display.style.format({
+                    "Precio Actual (ARS)": "${:,.2f}",
+                    "Var. Diaria (%)": "{:+.2f}%",
+                    "Apertura (ARS)": "${:,.2f}",
+                    "Cierre Anterior (ARS)": "${:,.2f}",
+                    "Máx Día": "${:,.2f}",
+                    "Mín Día": "${:,.2f}",
                 }),
                 use_container_width=True
             )
-    else:
-        st.warning("No se pudieron obtener cotizaciones cripto en este momento.")
-        if st.button("Reintentar descarga de Criptomonedas"):
-            fetch_api("/market-data/crypto-panel?force_refresh=true")
-            st.rerun()
+        else:
+            st.warning("No se pudieron obtener cotizaciones del panel Merval en este momento.")
+            if st.button("Reintentar descarga de Merval"):
+                fetch_api("/market-data/merval-panel?force_refresh=true")
+                st.rerun()
+
+    # =========================================================================
+    # VISTA 2: PRINCIPALES CEDEARS
+    # =========================================================================
+    elif market_panel_choice == "🌎 Principales CEDEARs (ByMA)":
+        st.markdown("### 🌎 Panel de Principales CEDEARs (ByMA)")
+        st.caption("Cotizaciones de empresas y ETFs internacionales negociados en pesos (ARS).")
+
+        cedears_data = fetch_api("/market-data/cedears-panel")
+
+        if cedears_data:
+            df_cedears = pd.DataFrame(cedears_data)
+
+            df_cedears["change_pct_num"] = df_cedears["change_pct"].apply(safe_float)
+            top_gainer_ced = df_cedears.sort_values(by="change_pct_num", ascending=False).iloc[0]
+            top_loser_ced = df_cedears.sort_values(by="change_pct_num", ascending=True).iloc[0]
+
+            col_c1, col_c2, col_c3 = st.columns(3)
+            with col_c1:
+                st.metric("Total CEDEARs Seguidos", f"{len(df_cedears)} activos")
+            with col_c2:
+                st.metric(
+                    "Mayor Alza del Día",
+                    f"{top_gainer_ced['symbol']} ${safe_float(top_gainer_ced['current_price']):,.2f}",
+                    delta=f"{safe_float(top_gainer_ced['change_pct']):+.2f}%"
+                )
+            with col_c3:
+                st.metric(
+                    "Mayor Baja del Día",
+                    f"{top_loser_ced['symbol']} ${safe_float(top_loser_ced['current_price']):,.2f}",
+                    delta=f"{safe_float(top_loser_ced['change_pct']):+.2f}%",
+                    delta_color="inverse"
+                )
+
+            search_ced = st.text_input("🔍 Buscar en el panel CEDEARs:", placeholder="Ej: AAPL, NVDA, SPY, MELI, TSLA, BABA...").strip().upper()
+            if search_ced:
+                df_cedears = df_cedears[
+                    df_cedears["symbol"].str.contains(search_ced) |
+                    df_cedears["name"].str.upper().str.contains(search_ced)
+                ]
+
+            df_cedears_display = df_cedears[[
+                "symbol", "name", "current_price", "change_pct", "open_price", "previous_close", "high_price", "low_price"
+            ]].copy()
+
+            df_cedears_display.columns = [
+                "Ticker", "Empresa / ETF", "Precio Actual (ARS)", "Var. Diaria (%)",
+                "Apertura (ARS)", "Cierre Anterior (ARS)", "Máx Día", "Mín Día"
+            ]
+
+            st.dataframe(
+                df_cedears_display.style.format({
+                    "Precio Actual (ARS)": "${:,.2f}",
+                    "Var. Diaria (%)": "{:+.2f}%",
+                    "Apertura (ARS)": "${:,.2f}",
+                    "Cierre Anterior (ARS)": "${:,.2f}",
+                    "Máx Día": "${:,.2f}",
+                    "Mín Día": "${:,.2f}",
+                }),
+                use_container_width=True
+            )
+        else:
+            st.warning("No se pudieron obtener cotizaciones del panel CEDEARs en este momento.")
+            if st.button("Reintentar descarga de CEDEARs"):
+                fetch_api("/market-data/cedears-panel?force_refresh=true")
+                st.rerun()
+
+    # =========================================================================
+    # VISTA 3: CRIPTOMONEDAS (BITCOIN, ETHEREUM, SOLANA)
+    # =========================================================================
+    elif market_panel_choice == "🪙 Criptomonedas (BTC, ETH, SOL)":
+        st.markdown("### 🪙 Criptomonedas Principales (Bitcoin, Ethereum, Solana)")
+        st.caption("Cotizaciones en tiempo real 24/7 en USD y convertidas a Pesos Argentinos (ARS) mediante el CCL.")
+
+        crypto_data = fetch_api("/market-data/crypto-panel")
+
+        if crypto_data:
+            # Tarjetas destacadas para BTC, ETH, SOL
+            cols_cry = st.columns(len(crypto_data))
+            for idx, coin in enumerate(crypto_data):
+                symbol = coin.get("symbol", "")
+                name = coin.get("name", "")
+                p_usd = safe_float(coin.get("current_price"))
+                p_ars = p_usd * ccl_rate_used
+                chg = safe_float(coin.get("change_pct"))
+                hi_usd = safe_float(coin.get("high_price"))
+                lo_usd = safe_float(coin.get("low_price"))
+
+                icon = "₿" if symbol == "BTC" else ("Ξ" if symbol == "ETH" else "◎")
+
+                with cols_cry[idx]:
+                    st.markdown(f"### {icon} {name} ({symbol})")
+                    st.metric(
+                        label="Precio Actual (USD)",
+                        value=f"${p_usd:,.2f} USD",
+                        delta=f"{chg:+.2f}% (24h)"
+                    )
+                    st.caption(f"💵 Equivalente en ARS: **${p_ars:,.2f}** (CCL: ${ccl_rate_used:,.2f})")
+                    st.markdown(f"<small>Rango 24h: <b>${lo_usd:,.2f}</b> - <b>${hi_usd:,.2f}</b></small>", unsafe_allow_html=True)
+
+            st.markdown("---")
+
+            df_cry = pd.DataFrame(crypto_data)
+            df_cry["change_pct_num"] = df_cry["change_pct"].apply(safe_float)
+            df_cry["Color"] = df_cry["change_pct_num"].apply(lambda x: "Alza" if x >= 0 else "Baja")
+
+            col_g1, col_g2 = st.columns([1, 1])
+            with col_g1:
+                st.subheader("📊 Variación en 24 Horas (%)")
+                fig_cry_bar = px.bar(
+                    df_cry,
+                    x="symbol",
+                    y="change_pct_num",
+                    color="Color",
+                    color_discrete_map={"Alza": "#00C853", "Baja": "#D50000"},
+                    labels={"symbol": "Criptomoneda", "change_pct_num": "Variación 24h (%)"},
+                    text="change_pct_num"
+                )
+                fig_cry_bar.update_traces(texttemplate='%{text:+.2f}%', textposition='outside')
+                fig_cry_bar.update_layout(height=350, showlegend=False, margin=dict(t=20, b=20, l=20, r=20))
+                st.plotly_chart(fig_cry_bar, use_container_width=True)
+
+            with col_g2:
+                st.subheader("📋 Tabla Comparativa Cripto")
+                df_cry_disp = df_cry.copy()
+                df_cry_disp["precio_ars"] = df_cry_disp["current_price"].apply(safe_float) * ccl_rate_used
+                
+                df_disp = df_cry_disp[[
+                    "symbol", "name", "current_price", "precio_ars", "change_pct", "open_price", "previous_close", "high_price", "low_price"
+                ]].copy()
+                df_disp.columns = [
+                    "Símbolo", "Nombre", "Precio (USD)", "Precio (ARS)", "Var. 24h (%)",
+                    "Apertura (USD)", "Cierre Ant. (USD)", "Máx 24h", "Mín 24h"
+                ]
+                st.dataframe(
+                    df_disp.style.format({
+                        "Precio (USD)": "${:,.2f}",
+                        "Precio (ARS)": "${:,.2f}",
+                        "Var. 24h (%)": "{:+.2f}%",
+                        "Apertura (USD)": "${:,.2f}",
+                        "Cierre Ant. (USD)": "${:,.2f}",
+                        "Máx 24h": "${:,.2f}",
+                        "Mín 24h": "${:,.2f}",
+                    }),
+                    use_container_width=True
+                )
+        else:
+            st.warning("No se pudieron obtener cotizaciones cripto en este momento.")
+            if st.button("Reintentar descarga de Criptomonedas"):
+                fetch_api("/market-data/crypto-panel?force_refresh=true")
+                st.rerun()
 
 
 # ------------------------------------------------------------------------------
-# TAB 5: DÓLAR EN TIEMPO REAL
+# TAB 3: DÓLAR EN TIEMPO REAL
 # ------------------------------------------------------------------------------
 with tab_dolar:
     st.subheader("💵 Cotizaciones del Dólar Financiero & Libre")

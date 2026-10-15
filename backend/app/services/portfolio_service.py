@@ -136,6 +136,9 @@ class PortfolioService:
             pnl_pct_ars = (pnl_ars / cost_ars * Decimal("100")) if cost_ars > 0 else Decimal("0.0")
             pnl_pct_usd = (pnl_usd / cost_usd * Decimal("100")) if cost_usd > 0 else Decimal("0.0")
 
+            avg_price_usd = (cost_usd / qty) if qty > 0 else Decimal("0.0")
+            avg_price_ars = (cost_ars / qty) if qty > 0 else Decimal("0.0")
+
             holdings_summary.append({
                 "asset_id": asset.id,
                 "ticker": asset.ticker,
@@ -145,6 +148,10 @@ class PortfolioService:
                 "latest_unit_price": float(unit_price),
                 "quote_currency": asset.currency.value if hasattr(asset.currency, "value") else str(asset.currency),
                 
+                # Precio Promedio de Compra (PPP) Bimonetario
+                "avg_buy_price_usd": float(round(avg_price_usd, 2)),
+                "avg_buy_price_ars": float(round(avg_price_ars, 2)),
+
                 # Métricas en Moneda Dura (USD) - RENDIMIENTO REAL
                 "cost_basis_usd": float(round(cost_usd, 2)),
                 "current_value_usd": float(round(current_market_usd, 2)),
