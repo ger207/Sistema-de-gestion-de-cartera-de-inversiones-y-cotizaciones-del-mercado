@@ -48,3 +48,13 @@ def sync_asset_price(asset_id: int, db: Session = Depends(get_db)):
 def get_merval_panel(force_refresh: bool = False):
     """Retorna las cotizaciones en tiempo real del panel líder de Merval con apertura, cierre anterior y variación."""
     return MarketDataService.get_merval_panel(force_refresh=force_refresh)
+
+@router.get("/cedears-panel", summary="Panel general de los principales CEDEARs")
+def get_cedears_panel(force_refresh: bool = False):
+    """Retorna las cotizaciones en tiempo real de los principales CEDEARs operados en ByMA."""
+    return MarketDataService.get_cedears_panel(force_refresh=force_refresh)
+
+@router.get("/crypto-panel", summary="Panel de cotizaciones cripto (BTC, ETH, SOL)")
+def get_crypto_panel(force_refresh: bool = False):
+    """Retorna las cotizaciones en tiempo real para Bitcoin, Ethereum y Solana."""
+    return MarketDataService.get_crypto_panel(force_refresh=force_refresh)

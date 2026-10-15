@@ -217,3 +217,172 @@ class MarketDataService:
         except Exception as e:
             logger.error(f"Error descargando panel Merval: {e}")
             return cls._merval_cache or []
+
+    # =========================================================================
+    # PANEL DE CEDEARS LÍDERES
+    # =========================================================================
+    _cedears_cache: List[Dict[str, Any]] = []
+    _cedears_cache_timestamp: Optional[datetime] = None
+
+    CEDEARS_COMPONENTS = [
+        ("SPY.BA", "SPDR S&P 500 ETF Trust"),
+        ("QQQ.BA", "Invesco QQQ Trust (Nasdaq)"),
+        ("DIA.BA", "SPDR Dow Jones Industrial"),
+        ("AAPL.BA", "Apple Inc."),
+        ("NVDA.BA", "NVIDIA Corporation"),
+        ("TSLA.BA", "Tesla Inc."),
+        ("MELI.BA", "MercadoLibre"),
+        ("MSFT.BA", "Microsoft Corp."),
+        ("AMZN.BA", "Amazon.com Inc."),
+        ("META.BA", "Meta Platforms (Facebook)"),
+        ("GOOGL.BA", "Alphabet Inc. (Google)"),
+        ("KO.BA", "The Coca-Cola Company"),
+        ("VIST.BA", "Vista Energy"),
+        ("BABA.BA", "Alibaba Group"),
+        ("PBR.BA", "Petrobras"),
+        ("BBD.BA", "Banco Bradesco"),
+        ("DISN.BA", "The Walt Disney Company"),
+        ("AMD.BA", "Advanced Micro Devices"),
+        ("VALE.BA", "Vale S.A."),
+        ("WMT.BA", "Walmart Inc."),
+        ("XOM.BA", "Exxon Mobil"),
+        ("JNJ.BA", "Johnson & Johnson"),
+        ("MCD.BA", "McDonald's Corp."),
+    ]
+
+    @classmethod
+    def get_cedears_panel(cls, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        """
+        Devuelve el panel de cotizaciones de los principales CEDEARs operados en ByMA con:
+        - Ticker
+        - Precio Actual ($ ARS)
+        - Precio de Apertura ($ ARS)
+        - Precio de Cierre Anterior ($ ARS)
+        - Variación porcentual diaria (%)
+        - Máximo y Mínimo
+        Se actualiza y cachea automáticamente cada 5 minutos.
+        """
+        now = datetime.now(timezone.utc)
+        if not force_refresh and cls._cedears_cache and cls._cedears_cache_timestamp:
+            elapsed = (now - cls._cedears_cache_timestamp).total_seconds()
+            if elapsed < 300:
+                return cls._cedears_cache
+
+        try:
+            tickers = [t[0] for t in cls.CEDEARS_COMPONENTS]
+            df = yf.download(tickers, period="5d", interval="1d", progress=False)
+
+            panel = []
+            for ticker, name in cls.CEDEARS_COMPONENTS:
+                try:
+                    close_series = df["Close"][ticker].dropna() if "Close" in df and ticker in df["Close"] else None
+                    open_series = df["Open"][ticker].dropna() if "Open" in df and ticker in df["Open"] else None
+                    high_series = df["High"][ticker].dropna() if "High" in df and ticker in df["High"] else None
+                    low_series = df["Low"][ticker].dropna() if "Low" in df and ticker in df["Low"] else None
+
+                    if close_series is not None and len(close_series) >= 1:
+                        current_price = float(close_series.iloc[-1])
+                        prev_close = float(close_series.iloc[-2]) if len(close_series) >= 2 else current_price
+                        open_price = float(open_series.iloc[-1]) if open_series is not None and len(open_series) >= 1 else current_price
+                        high_price = float(high_series.iloc[-1]) if high_series is not None and len(high_series) >= 1 else current_price
+                        low_price = float(low_series.iloc[-1]) if low_series is not None and len(low_series) >= 1 else current_price
+
+                        change_abs = current_price - prev_close
+                        change_pct = ((change_abs / prev_close) * 100.0) if prev_close > 0 else 0.0
+
+                        panel.append({
+                            "ticker": ticker,
+                            "symbol": ticker.replace(".BA", ""),
+                            "name": name,
+                            "current_price": round(current_price, 2),
+                            "open_price": round(open_price, 2),
+                            "previous_close": round(prev_close, 2),
+                            "high_price": round(high_price, 2),
+                            "low_price": round(low_price, 2),
+                            "change_abs": round(change_abs, 2),
+                            "change_pct": round(change_pct, 2),
+                        })
+                except Exception as ex:
+                    logger.warning(f"Error procesando cotización CEDEAR para {ticker}: {ex}")
+
+            if panel:
+                cls._cedears_cache = panel
+                cls._cedears_cache_timestamp = now
+            return cls._cedears_cache
+        except Exception as e:
+            logger.error(f"Error descargando panel CEDEARs: {e}")
+            return cls._cedears_cache or []
+
+    # =========================================================================
+    # PANEL DE CRIPTOMONEDAS PRINCIPALES (BTC, ETH, SOL)
+    # =========================================================================
+    _crypto_cache: List[Dict[str, Any]] = []
+    _crypto_cache_timestamp: Optional[datetime] = None
+
+    CRYPTO_COMPONENTS = [
+        ("BTC-USD", "Bitcoin", "BTC"),
+        ("ETH-USD", "Ethereum", "ETH"),
+        ("SOL-USD", "Solana", "SOL"),
+    ]
+
+    @classmethod
+    def get_crypto_panel(cls, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        """
+        Devuelve las cotizaciones en tiempo real para Bitcoin, Ethereum y Solana con:
+        - Ticker y Símbolo
+        - Precio Actual (USD)
+        - Apertura (USD)
+        - Cierre Anterior (USD)
+        - Variación 24h (%)
+        - Máximo y Mínimo 24h
+        """
+        now = datetime.now(timezone.utc)
+        if not force_refresh and cls._crypto_cache and cls._crypto_cache_timestamp:
+            elapsed = (now - cls._crypto_cache_timestamp).total_seconds()
+            if elapsed < 300:
+                return cls._crypto_cache
+
+        try:
+            tickers = [t[0] for t in cls.CRYPTO_COMPONENTS]
+            df = yf.download(tickers, period="5d", interval="1d", progress=False)
+
+            panel = []
+            for ticker, name, symbol in cls.CRYPTO_COMPONENTS:
+                try:
+                    close_series = df["Close"][ticker].dropna() if "Close" in df and ticker in df["Close"] else None
+                    open_series = df["Open"][ticker].dropna() if "Open" in df and ticker in df["Open"] else None
+                    high_series = df["High"][ticker].dropna() if "High" in df and ticker in df["High"] else None
+                    low_series = df["Low"][ticker].dropna() if "Low" in df and ticker in df["Low"] else None
+
+                    if close_series is not None and len(close_series) >= 1:
+                        current_price = float(close_series.iloc[-1])
+                        prev_close = float(close_series.iloc[-2]) if len(close_series) >= 2 else current_price
+                        open_price = float(open_series.iloc[-1]) if open_series is not None and len(open_series) >= 1 else current_price
+                        high_price = float(high_series.iloc[-1]) if high_series is not None and len(high_series) >= 1 else current_price
+                        low_price = float(low_series.iloc[-1]) if low_series is not None and len(low_series) >= 1 else current_price
+
+                        change_abs = current_price - prev_close
+                        change_pct = ((change_abs / prev_close) * 100.0) if prev_close > 0 else 0.0
+
+                        panel.append({
+                            "ticker": ticker,
+                            "symbol": symbol,
+                            "name": name,
+                            "current_price": round(current_price, 2),
+                            "open_price": round(open_price, 2),
+                            "previous_close": round(prev_close, 2),
+                            "high_price": round(high_price, 2),
+                            "low_price": round(low_price, 2),
+                            "change_abs": round(change_abs, 2),
+                            "change_pct": round(change_pct, 2),
+                        })
+                except Exception as ex:
+                    logger.warning(f"Error procesando cotización cripto para {ticker}: {ex}")
+
+            if panel:
+                cls._crypto_cache = panel
+                cls._crypto_cache_timestamp = now
+            return cls._crypto_cache
+        except Exception as e:
+            logger.error(f"Error descargando panel Cripto: {e}")
+            return cls._crypto_cache or []

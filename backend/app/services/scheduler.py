@@ -36,9 +36,11 @@ async def job_sync_market_data():
                 synced_count += 1
                 logger.info(f"Precio actualizado: {asset.ticker} -> {price_rec.close_price}")
 
-        # 3. Refrescar panel general de acciones Merval
+        # 3. Refrescar paneles de mercado (Merval, CEDEARs y Criptomonedas)
         MarketDataService.get_merval_panel(force_refresh=True)
-        logger.info("Panel general de acciones líderes del Merval actualizado.")
+        MarketDataService.get_cedears_panel(force_refresh=True)
+        MarketDataService.get_crypto_panel(force_refresh=True)
+        logger.info("Paneles de mercado actualizados: Merval, CEDEARs y Criptomonedas (BTC, ETH, SOL).")
 
         logger.info(f"Sincronizacion completada: {synced_count}/{len(active_assets)} activos actualizados.")
     except Exception as e:
