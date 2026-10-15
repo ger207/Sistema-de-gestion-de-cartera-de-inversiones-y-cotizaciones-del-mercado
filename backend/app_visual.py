@@ -123,11 +123,11 @@ def auto_detect_instrument(raw_ticker: str, existing_assets: list) -> Tuple[str,
             curr = a.get("currency", "ARS")
             name = a.get("name", clean)
             display_map = {
-                "EQUITY_LOCAL": "🏛️ Acción Merval",
-                "CEDEAR": "🌎 CEDEAR",
-                "SOVEREIGN_BOND": "📜 Bono Soberano",
-                "CRYPTO_SPOT": "🪙 Criptomoneda",
-                "CRYPTO_FUTURES": "⚡ Futuros Cripto",
+                "EQUITY_LOCAL": "Acción Merval",
+                "CEDEAR": "CEDEAR",
+                "SOVEREIGN_BOND": "Bono Soberano",
+                "CRYPTO_SPOT": "Criptomoneda",
+                "CRYPTO_FUTURES": "Futuros Cripto",
             }
             return a["ticker"], name, cls, curr, display_map.get(cls, cls)
 
@@ -138,13 +138,13 @@ def auto_detect_instrument(raw_ticker: str, existing_assets: list) -> Tuple[str,
     }
     if clean in CRYPTO_SET or clean.endswith("-USD") or clean.endswith("-USDT") or clean.endswith("USDT"):
         norm = clean if ("-" in clean or clean.endswith("USDT")) else f"{clean}-USD"
-        return norm, f"{clean_no_ba}", "CRYPTO_SPOT", "USD", "🪙 Criptomoneda"
+        return norm, f"{clean_no_ba}", "CRYPTO_SPOT", "USD", "Criptomoneda"
 
     # 3. Bonos Soberanos / Renta Fija (AL30, GD30, AE38, TX26, T2X5, BOPREAL, etc.)
     BOND_PREFIXES = ("AL", "GD", "AE", "TX", "T2X", "BP", "BOP", "TV", "S3", "S1", "TO", "DICP", "PARP")
     if clean.startswith(BOND_PREFIXES) and any(c.isdigit() for c in clean):
         norm = clean if clean.endswith(".BA") else f"{clean}.BA"
-        return norm, f"Bono {clean_no_ba}", "SOVEREIGN_BOND", "ARS", "📜 Bono Soberano"
+        return norm, f"Bono {clean_no_ba}", "SOVEREIGN_BOND", "ARS", "Bono Soberano"
 
     # 4. CEDEARs populares de ByMA
     CEDEARS_SET = {
@@ -156,7 +156,7 @@ def auto_detect_instrument(raw_ticker: str, existing_assets: list) -> Tuple[str,
     }
     if clean_no_ba in CEDEARS_SET:
         norm = f"{clean_no_ba}.BA"
-        return norm, f"{clean_no_ba}", "CEDEAR", "ARS", "🌎 CEDEAR"
+        return norm, f"{clean_no_ba}", "CEDEAR", "ARS", "CEDEAR"
 
     # 5. Acciones Líderes y del Panel General del Merval
     MERVAL_SET = {
@@ -168,14 +168,14 @@ def auto_detect_instrument(raw_ticker: str, existing_assets: list) -> Tuple[str,
     }
     if clean_no_ba in MERVAL_SET:
         norm = f"{clean_no_ba}.BA"
-        return norm, f"{clean_no_ba}", "EQUITY_LOCAL", "ARS", "🏛️ Acción Merval"
+        return norm, f"{clean_no_ba}", "EQUITY_LOCAL", "ARS", "Acción Merval"
 
     # 6. Heurística general de contingencia
     if "-" in clean or "USD" in clean:
-        return clean, f"{clean}", "CRYPTO_SPOT", "USD", "🪙 Criptomoneda"
+        return clean, f"{clean}", "CRYPTO_SPOT", "USD", "Criptomoneda"
     
     norm = clean if clean.endswith(".BA") else f"{clean}.BA"
-    return norm, f"{clean_no_ba}", "EQUITY_LOCAL", "ARS", "🏛️ Acción Merval"
+    return norm, f"{clean_no_ba}", "EQUITY_LOCAL", "ARS", "Acción Merval"
 
 
 # ==============================================================================
@@ -230,7 +230,7 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
     )
 
     if ticker_input:
-        st.info(f"🔍 **Detectado:** {display_class}  \n**Ticker:** `{normalized_ticker}`", icon="💡")
+        st.info(f"**Detectado:** {display_class}  \n**Ticker:** `{normalized_ticker}`")
 
     # 2. Tipo de Operación
     tx_type = st.selectbox(
@@ -241,9 +241,9 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
     
     col_q, col_p = st.columns(2)
     with col_q:
-        quantity = st.number_input("Cantidad:", min_value=0.00000001, value=1.0, format="%.6f")
+        quantity = st.number_input("Cantidad:", min_value=0.0, value=0.0, step=1.0, format="%.4f")
     with col_p:
-        price = st.number_input("Precio Unitario:", min_value=0.0001, value=1000.0, format="%.2f")
+        price = st.number_input("Precio Unitario:", min_value=0.0, value=0.0, step=100.0, format="%.2f")
 
     col_cur, col_fee_pct = st.columns(2)
     with col_cur:
@@ -270,11 +270,13 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
     calculated_fee_amount = gross_subtotal * (fee_percentage / 100.0)
     estimated_net = (gross_subtotal + calculated_fee_amount) if tx_type == "BUY" else (gross_subtotal - calculated_fee_amount)
 
-    st.markdown(
-        f"💰 **Subtotal:** {currency} ${gross_subtotal:,.2f}  \n"
-        f"🏷️ **Comisión ({fee_percentage:.2f}%):** {currency} ${calculated_fee_amount:,.2f}  \n"
-        f"🧾 **Total Estimado:** {currency} ${estimated_net:,.2f}"
-    )
+    # Mostrar desglose únicamente si hay un ticker ingresado y valores mayores a cero
+    if ticker_input and quantity > 0 and price > 0:
+        st.markdown(
+            f"**Subtotal:** {currency} \\${gross_subtotal:,.2f}  \n"
+            f"**Comisión ({fee_percentage:.2f}%):** {currency} \\${calculated_fee_amount:,.2f}  \n"
+            f"**Total Estimado:** {currency} \\${estimated_net:,.2f}"
+        )
 
     notes = st.text_input("Notas (Opcional):", placeholder="Ej: Compra mensual DCA")
 
@@ -283,6 +285,10 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
     if submit_button:
         if not ticker_input:
             st.sidebar.error("Debes ingresar un ticker válido.")
+        elif quantity <= 0:
+            st.sidebar.error("Debes ingresar una cantidad mayor a 0.")
+        elif price <= 0:
+            st.sidebar.error("Debes ingresar un precio unitario mayor a 0.")
         elif not default_account_id:
             st.sidebar.error("No se encontró una cuenta de custodia activa para registrar la operación.")
         else:
