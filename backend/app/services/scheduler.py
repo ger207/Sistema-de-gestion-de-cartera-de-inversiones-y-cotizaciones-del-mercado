@@ -31,10 +31,14 @@ async def job_sync_market_data():
             if asset.asset_class.value == "CASH":
                 continue
             
-            price_rec = MarketDataService.sync_asset_market_price(db, asset)
-            if price_rec:
-                synced_count += 1
-                logger.info(f"Precio actualizado: {asset.ticker} -> {price_rec.close_price}")
+            try:
+                price_rec = MarketDataService.sync_asset_market_price(db, asset)
+                if price_rec:
+                    synced_count += 1
+                    logger.info(f"Precio actualizado: {asset.ticker} -> {price_rec.close_price}")
+            except Exception as asset_err:
+                db.rollback()
+                logger.warning(f"Error sincronizando activo {asset.ticker}: {asset_err}")
 
         # 3. Refrescar paneles de mercado (Merval, CEDEARs y Criptomonedas)
         MarketDataService.get_merval_panel(force_refresh=True)
@@ -44,6 +48,7 @@ async def job_sync_market_data():
 
         logger.info(f"Sincronizacion completada: {synced_count}/{len(active_assets)} activos actualizados.")
     except Exception as e:
+        db.rollback()
         logger.error(f"Error durante la sincronizacion periodica: {str(e)}")
     finally:
         db.close()

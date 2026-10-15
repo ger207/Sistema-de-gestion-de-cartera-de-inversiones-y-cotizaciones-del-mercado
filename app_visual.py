@@ -45,6 +45,23 @@ st.markdown("""
         color: #FF5252;
         font-weight: bold;
     }
+    /* Evitar que los números de las métricas se corten con '...' y permitir ancho completo */
+    [data-testid="stMetricValue"], [data-testid="stMetricValue"] * {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+    }
+    [data-testid="stMetricValue"] > div {
+        font-size: 1.35rem !important;
+        white-space: normal !important;
+        word-break: normal !important;
+        text-overflow: unset !important;
+        overflow: visible !important;
+    }
+    [data-testid="stMetricLabel"] {
+        white-space: normal !important;
+        font-size: 0.85rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -106,9 +123,9 @@ def auto_detect_instrument(raw_ticker: str, existing_assets: list) -> Tuple[str,
             curr = a.get("currency", "ARS")
             name = a.get("name", clean)
             display_map = {
-                "EQUITY_LOCAL": "🏛️ Acción Local Merval",
-                "CEDEAR": "🌎 CEDEAR (Activo Internacional)",
-                "SOVEREIGN_BOND": "📜 Bono Soberano / Renta Fija",
+                "EQUITY_LOCAL": "🏛️ Acción Merval",
+                "CEDEAR": "🌎 CEDEAR",
+                "SOVEREIGN_BOND": "📜 Bono Soberano",
                 "CRYPTO_SPOT": "🪙 Criptomoneda",
                 "CRYPTO_FUTURES": "⚡ Futuros Cripto",
             }
@@ -121,13 +138,13 @@ def auto_detect_instrument(raw_ticker: str, existing_assets: list) -> Tuple[str,
     }
     if clean in CRYPTO_SET or clean.endswith("-USD") or clean.endswith("-USDT") or clean.endswith("USDT"):
         norm = clean if ("-" in clean or clean.endswith("USDT")) else f"{clean}-USD"
-        return norm, f"{clean_no_ba} (Cripto)", "CRYPTO_SPOT", "USD", "🪙 Criptomoneda Spot"
+        return norm, f"{clean_no_ba}", "CRYPTO_SPOT", "USD", "🪙 Criptomoneda"
 
     # 3. Bonos Soberanos / Renta Fija (AL30, GD30, AE38, TX26, T2X5, BOPREAL, etc.)
     BOND_PREFIXES = ("AL", "GD", "AE", "TX", "T2X", "BP", "BOP", "TV", "S3", "S1", "TO", "DICP", "PARP")
     if clean.startswith(BOND_PREFIXES) and any(c.isdigit() for c in clean):
         norm = clean if clean.endswith(".BA") else f"{clean}.BA"
-        return norm, f"Bono Soberano {clean_no_ba}", "SOVEREIGN_BOND", "ARS", "📜 Bono Soberano"
+        return norm, f"Bono {clean_no_ba}", "SOVEREIGN_BOND", "ARS", "📜 Bono Soberano"
 
     # 4. CEDEARs populares de ByMA
     CEDEARS_SET = {
@@ -139,7 +156,7 @@ def auto_detect_instrument(raw_ticker: str, existing_assets: list) -> Tuple[str,
     }
     if clean_no_ba in CEDEARS_SET:
         norm = f"{clean_no_ba}.BA"
-        return norm, f"{clean_no_ba} (CEDEAR)", "CEDEAR", "ARS", "🌎 CEDEAR"
+        return norm, f"{clean_no_ba}", "CEDEAR", "ARS", "🌎 CEDEAR"
 
     # 5. Acciones Líderes y del Panel General del Merval
     MERVAL_SET = {
@@ -151,14 +168,14 @@ def auto_detect_instrument(raw_ticker: str, existing_assets: list) -> Tuple[str,
     }
     if clean_no_ba in MERVAL_SET:
         norm = f"{clean_no_ba}.BA"
-        return norm, f"{clean_no_ba} (Acción Merval)", "EQUITY_LOCAL", "ARS", "🏛️ Acción Local Merval"
+        return norm, f"{clean_no_ba}", "EQUITY_LOCAL", "ARS", "🏛️ Acción Merval"
 
     # 6. Heurística general de contingencia
     if "-" in clean or "USD" in clean:
-        return clean, f"{clean} (Cripto)", "CRYPTO_SPOT", "USD", "🪙 Criptomoneda"
+        return clean, f"{clean}", "CRYPTO_SPOT", "USD", "🪙 Criptomoneda"
     
     norm = clean if clean.endswith(".BA") else f"{clean}.BA"
-    return norm, f"{clean_no_ba}", "EQUITY_LOCAL", "ARS", "📈 Instrumento Local"
+    return norm, f"{clean_no_ba}", "EQUITY_LOCAL", "ARS", "🏛️ Acción Merval"
 
 
 # ==============================================================================
@@ -213,7 +230,7 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
     )
 
     if ticker_input:
-        st.info(f"🔍 **Detectado:** {display_class}<br>`{normalized_ticker}`", icon="💡")
+        st.info(f"🔍 **Detectado:** {display_class}  \n**Ticker:** `{normalized_ticker}`", icon="💡")
 
     # 2. Tipo de Operación
     tx_type = st.selectbox(
@@ -254,10 +271,9 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
     estimated_net = (gross_subtotal + calculated_fee_amount) if tx_type == "BUY" else (gross_subtotal - calculated_fee_amount)
 
     st.markdown(
-        f"<small>💰 Subtotal: <b>{currency} ${gross_subtotal:,.2f}</b><br>"
-        f"🏷️ Comisión ({fee_percentage:.2f}%): <b>{currency} ${calculated_fee_amount:,.2f}</b><br>"
-        f"🧾 Total Estimado: <b>{currency} ${estimated_net:,.2f}</b></small>",
-        unsafe_allow_html=True
+        f"💰 **Subtotal:** {currency} ${gross_subtotal:,.2f}  \n"
+        f"🏷️ **Comisión ({fee_percentage:.2f}%):** {currency} ${calculated_fee_amount:,.2f}  \n"
+        f"🧾 **Total Estimado:** {currency} ${estimated_net:,.2f}"
     )
 
     notes = st.text_input("Notas (Opcional):", placeholder="Ej: Compra mensual DCA")
@@ -343,7 +359,7 @@ with col_title:
     st.caption("Seguimiento automatizado en tiempo real | Aislamiento de ilusión monetaria")
 
 with col_toggle:
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.write("")
     view_currency = st.radio(
         "Moneda de Visualización:",
         options=["USD (Moneda Dura)", "ARS (Pesos)"],
@@ -408,16 +424,6 @@ with col_kpi4:
         value=f"ARS ${ccl_rate_used:,.2f}",
         help="Tipo de cambio financiero aplicado para la conversión bimonetaria."
     )
-
-# Banner explicativo de Aislamiento de Ilusión Monetaria
-pnl_usd_pct = safe_float(valuation_data.get("total_pnl_pct_usd"))
-pnl_ars_pct = safe_float(valuation_data.get("total_pnl_pct_ars"))
-
-st.info(
-    f"💡 **Análisis de Rendimiento Real vs Nominal:** "
-    f"En **moneda dura (USD)** tu cartera rinde **{pnl_usd_pct:+.2f}%**, mientras que en **pesos (ARS)** la ganancia aparente es de **{pnl_ars_pct:+.2f}%**. "
-    f"La diferencia de **{abs(pnl_ars_pct - pnl_usd_pct):.2f}%** corresponde al efecto de la devaluación cambiaria del ARS."
-)
 
 
 # ==============================================================================
@@ -765,7 +771,6 @@ with tab_quotes:
                         delta=f"{chg:+.2f}% (24h)"
                     )
                     st.caption(f"💵 Equivalente en ARS: **${p_ars:,.2f}** (CCL: ${ccl_rate_used:,.2f})")
-                    st.markdown(f"<small>Rango 24h: <b>${lo_usd:,.2f}</b> - <b>${hi_usd:,.2f}</b></small>", unsafe_allow_html=True)
 
             st.markdown("---")
 

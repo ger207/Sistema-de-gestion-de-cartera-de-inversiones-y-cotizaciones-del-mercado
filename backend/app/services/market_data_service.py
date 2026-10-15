@@ -111,6 +111,24 @@ class MarketDataService:
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
 
+            # Evitar error de integridad (UNIQUE constraint): si ya existe registro para esa fecha, actualizarlo
+            existing_price = (
+                db.query(AssetPrice)
+                .filter(AssetPrice.asset_id == asset.id, AssetPrice.timestamp == ts)
+                .first()
+            )
+
+            if existing_price:
+                existing_price.open_price = open_price
+                existing_price.high_price = high_price
+                existing_price.low_price = low_price
+                existing_price.close_price = close_price
+                existing_price.volume = volume
+                existing_price.source = "YFINANCE"
+                db.commit()
+                db.refresh(existing_price)
+                return existing_price
+
             price_record = AssetPrice(
                 asset_id=asset.id,
                 timestamp=ts,
