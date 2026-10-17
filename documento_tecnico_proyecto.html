@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Documento Técnico del Proyecto Integrador - Gestor de Carteras Bimonetarias</title>
+<style>
+    @page {
+        size: A4;
+        margin: 20mm 15mm 20mm 15mm;
+        @bottom-right {
+            content: counter(page);
+        }
+    }
+    body {
+        font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+        color: #1a1a1a;
+        line-height: 1.5;
+        font-size: 11pt;
+        background-color: #ffffff;
+        margin: 0;
+        padding: 0;
+    }
+    .cover-page {
+        page-break-after: always;
+        height: 90vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 40px 20px;
+        box-sizing: border-box;
+    }
+    .cover-header {
+        border-bottom: 3px solid #0052cc;
+        padding-bottom: 20px;
+    }
+    .cover-title {
+        font-size: 26pt;
+        font-weight: 800;
+        color: #0747a6;
+        margin: 0 0 10px 0;
+        line-height: 1.2;
+    }
+    .cover-subtitle {
+        font-size: 14pt;
+        color: #42526e;
+        font-weight: 400;
+        margin: 0;
+    }
+    .cover-body {
+        margin: 60px 0;
+    }
+    .cover-badge {
+        display: inline-block;
+        background-color: #deebff;
+        color: #0747a6;
+        padding: 6px 14px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 10pt;
+        margin-bottom: 15px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .cover-meta {
+        background-color: #f4f5f7;
+        border-left: 4px solid #0052cc;
+        padding: 20px;
+        border-radius: 0 6px 6px 0;
+    }
+    .cover-meta table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .cover-meta td {
+        padding: 6px 0;
+        font-size: 11pt;
+    }
+    .cover-meta td.label {
+        font-weight: 700;
+        color: #172b4d;
+        width: 30%;
+    }
+    .cover-meta td.val {
+        color: #344563;
+    }
+    .cover-footer {
+        font-size: 9pt;
+        color: #6b778c;
+        border-top: 1px solid #dfe1e6;
+        padding-top: 15px;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    /* Content styling */
+    h1 {
+        font-size: 18pt;
+        color: #0747a6;
+        border-bottom: 2px solid #ebecf0;
+        padding-bottom: 6px;
+        margin-top: 28px;
+        margin-bottom: 14px;
+        page-break-after: avoid;
+    }
+    h2 {
+        font-size: 13pt;
+        color: #172b4d;
+        margin-top: 20px;
+        margin-bottom: 10px;
+        page-break-after: avoid;
+    }
+    h3 {
+        font-size: 11pt;
+        color: #253858;
+        margin-top: 14px;
+        margin-bottom: 6px;
+        page-break-after: avoid;
+    }
+    p {
+        margin: 0 0 10px 0;
+        text-align: justify;
+    }
+    ul, ol {
+        margin: 0 0 12px 0;
+        padding-left: 24px;
+    }
+    li {
+        margin-bottom: 4px;
+    }
+
+    /* Tables */
+    table.data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 14px 0 20px 0;
+        font-size: 9.5pt;
+        page-break-inside: avoid;
+    }
+    table.data-table th {
+        background-color: #0747a6;
+        color: #ffffff;
+        text-align: left;
+        padding: 8px 10px;
+        font-weight: 600;
+        border: 1px solid #0747a6;
+    }
+    table.data-table td {
+        padding: 7px 10px;
+        border: 1px solid #dfe1e6;
+        vertical-align: top;
+    }
+    table.data-table tr:nth-child(even) td {
+        background-color: #fafbfc;
+    }
+
+    /* Callout & Code */
+    .callout {
+        background-color: #f4f5f7;
+        border-left: 4px solid #0052cc;
+        padding: 12px 16px;
+        margin: 14px 0;
+        border-radius: 0 4px 4px 0;
+        font-size: 10pt;
+    }
+    .callout-title {
+        font-weight: 700;
+        color: #0747a6;
+        margin-bottom: 4px;
+    }
+    .formula-box {
+        background-color: #f7f9fa;
+        border: 1px solid #dcdfe4;
+        border-radius: 6px;
+        padding: 12px 18px;
+        margin: 12px 0;
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 9.5pt;
+        color: #091e42;
+    }
+    .tag {
+        display: inline-block;
+        font-family: monospace;
+        background-color: #ebecf0;
+        color: #172b4d;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 9pt;
+    }
+    .page-break {
+        page-break-after: always;
+    }
+</style>
+</head>
+<body>
+
+<!-- PORTADA -->
+<div class="cover-page">
+    <div class="cover-header">
+        <div class="cover-badge">Proyecto Integrador Universitario</div>
+        <div class="cover-title">Sistema Automatizado de Seguimiento de Carteras y Gestión de Riesgo Bimonetario</div>
+        <div class="cover-subtitle">Memoria Técnica, Arquitectura de Software, Modelado de Datos y Métricas Financieras</div>
+    </div>
+
+    <div class="cover-body">
+        <p style="font-size: 11pt; color: #42526e; line-height: 1.6; margin-bottom: 25px;">
+            Documento técnico formal del proyecto integrador enfocado en el aislamiento automatizado de la ilusión monetaria en carteras de inversión argentinas mediante valuación dual Mark-to-Market (ARS vs. USD CCL/MEP), seguimiento de activos multiclase (Merval, CEDEARs, Bonos Soberanos y Cripto) y monitoreo de riesgo para contratos derivados.
+        </p>
+
+        <div class="cover-meta">
+            <table>
+                <tr>
+                    <td class="label">Área / Disciplina:</td>
+                    <td class="val">Ingeniería de Software / Ciencia de Datos / Finanzas Computacionales</td>
+                </tr>
+                <tr>
+                    <td class="label">Tipo de Proyecto:</td>
+                    <td class="val">Proyecto Integrador Universitario Individual</td>
+                </tr>
+                <tr>
+                    <td class="label">Stack Tecnológico:</td>
+                    <td class="val">Python 3.10+, FastAPI, SQLAlchemy 2.0, SQLite, APScheduler, Streamlit, Plotly</td>
+                </tr>
+                <tr>
+                    <td class="label">Fuentes de Datos:</td>
+                    <td class="val">Yahoo Finance (yfinance API) y DolarApi (API REST)</td>
+                </tr>
+                <tr>
+                    <td class="label">Fecha de Emisión:</td>
+                    <td class="val">Octubre 2026</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="cover-footer">
+        <span>Gestor de Carteras Bimonetarias &copy; 2026</span>
+        <span>Memoria de Arquitectura e Implementación Real</span>
+    </div>
+</div>
+
+<!-- SECCIÓN 1: DEPENDENCIAS Y LIBRERÍAS -->
+<h1>1. Ecosistema de Librerías y Dependencias Técnicas</h1>
+<p>
+    El sistema fue desarrollado bajo una arquitectura orientada a servicios desacoplados utilizando Python. Todas las librerías empleadas están estrictamente declaradas en el archivo <span class="tag">backend/requirements.txt</span>, garantizando reproducibilidad y bajo consumo de recursos:
+</p>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th style="width: 25%;">Librería</th>
+            <th style="width: 18%;">Versión Mínima</th>
+            <th style="width: 57%;">Función y Justificación Técnica en el Sistema</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><strong>fastapi</strong></td>
+            <td><code>&gt;=0.110.0</code></td>
+            <td>Framework backend de alto rendimiento asíncrono sobre ASGI. Expone endpoints RESTful documentados con Swagger/OpenAPI.</td>
+        </tr>
+        <tr>
+            <td><strong>uvicorn[standard]</strong></td>
+            <td><code>&gt;=0.28.0</code></td>
+            <td>Servidor ASGI de grado de producción con soporte para HTTP/1.1 y WebSockets, utilizado para correr el backend FastAPI.</td>
+        </tr>
+        <tr>
+            <td><strong>pydantic</strong></td>
+            <td><code>&gt;=2.6.0</code></td>
+            <td>Validación rigurosa de esquemas de datos tipados, serialización JSON y control estricto de entradas y salidas de la API.</td>
+        </tr>
+        <tr>
+            <td><strong>pydantic-settings</strong></td>
+            <td><code>&gt;=2.2.0</code></td>
+            <td>Gestión tipada de variables de configuración, endpoints de APIs externas y parámetros de ejecución.</td>
+        </tr>
+        <tr>
+            <td><strong>sqlalchemy</strong></td>
+            <td><code>&gt;=2.0.28</code></td>
+            <td>ORM (Object Relational Mapper) declarativo moderno 2.0. Mapea modelos de negocio con SQLite y gestiona transacciones ACID.</td>
+        </tr>
+        <tr>
+            <td><strong>alembic</strong></td>
+            <td><code>&gt;=1.13.1</code></td>
+            <td>Herramienta de versionado, control de cambios y migraciones evolutivas para la estructura de la base de datos relacional.</td>
+        </tr>
+        <tr>
+            <td><strong>yfinance</strong></td>
+            <td><code>&gt;=0.2.37</code></td>
+            <td>Ingesta automatizada de cotizaciones históricas e intradía para acciones ByMA (<code>.BA</code>), CEDEARs y criptomonedas.</td>
+        </tr>
+        <tr>
+            <td><strong>httpx</strong></td>
+            <td><code>&gt;=0.27.0</code></td>
+            <td>Cliente HTTP asíncrono para consumir APIs financieras externas (DolarApi) sin bloquear el bucle de eventos principal.</td>
+        </tr>
+        <tr>
+            <td><strong>python-dotenv</strong></td>
+            <td><code>&gt;=1.0.1</code></td>
+            <td>Carga segura y desacoplada de configuraciones locales desde archivos <code>.env</code>.</td>
+        </tr>
+        <tr>
+            <td><strong>pandas</strong></td>
+            <td><code>&gt;=2.2.1</code></td>
+            <td>Estructuración y manipulación de series temporales, DataFrames analíticos para paneles de mercado y cómputo de tenencias.</td>
+        </tr>
+        <tr>
+            <td><strong>numpy</strong></td>
+            <td><code>&gt;=1.26.4</code></td>
+            <td>Soporte para operaciones matemáticas vectorizadas y base para futuros cómputos estadísticos matriciales.</td>
+        </tr>
+        <tr>
+            <td><strong>apscheduler</strong></td>
+            <td><code>&gt;=3.10.4</code></td>
+            <td>Programador de tareas en segundo plano (Background Tasks) que sincroniza cotizaciones y tipos de cambio cada 5 minutos.</td>
+        </tr>
+        <tr>
+            <td><strong>streamlit</strong></td>
+            <td><code>&gt;=1.32.0</code></td>
+            <td>Framework frontend reactivo en Python para la construcción del dashboard interactivo, formularios y gestión de sesión.</td>
+        </tr>
+        <tr>
+            <td><strong>plotly</strong></td>
+            <td><code>&gt;=5.20.0</code></td>
+            <td>Librería de visualización interactiva para gráficos de torta/donut (composición de cartera) y gráficos de barras (P&L y FX).</td>
+        </tr>
+        <tr>
+            <td><strong>requests</strong></td>
+            <td><code>&gt;=2.31.0</code></td>
+            <td>Cliente HTTP sincrónico utilizado por la interfaz Streamlit para comunicarse con el servidor local de FastAPI.</td>
+        </tr>
+    </tbody>
+</table>
+
+<div class="page-break"></div>
+
+<!-- SECCIÓN 2: ESTRUCTURA DEL MODELO RELACIONAL -->
+<h1>2. Estructura Exacta del Modelo Relacional de Base de Datos</h1>
+<p>
+    El modelo está estructurado en base al patrón de contabilidad financiera de doble entrada y registros inmutables (Ledger), implementado mediante clases mapeadas de SQLAlchemy en <span class="tag">backend/app/models/</span>:
+</p>
+
+<h2>2.1. Enumeraciones del Dominio (<span class="tag">app/models/enums.py</span>)</h2>
+<ul>
+    <li><strong>Currency:</strong> <code>USD</code>, <code>ARS</code>, <code>USDT</code>.</li>
+    <li><strong>AssetClass:</strong> <code>EQUITY_LOCAL</code> (Merval), <code>CEDEAR</code>, <code>SOVEREIGN_BOND</code> (Bonos soberanos), <code>CRYPTO_SPOT</code>, <code>CRYPTO_FUTURES</code>, <code>CASH</code>.</li>
+    <li><strong>TransactionType:</strong> <code>BUY</code>, <code>SELL</code>, <code>DEPOSIT</code>, <code>WITHDRAWAL</code>, <code>DIVIDEND</code>, <code>COUPON</code>, <code>AMORTIZATION</code>, <code>FEE</code>, <code>FUNDING_FEE</code>.</li>
+    <li><strong>FxRateType:</strong> <code>CCL</code>, <code>MEP</code>, <code>OFICIAL</code>, <code>BLUE</code>, <code>CRYPTO</code>.</li>
+    <li><strong>AccountType:</strong> <code>BROKER_LOCAL</code>, <code>BROKER_INTL</code>, <code>CRYPTO_EXCHANGE</code>, <code>BANK</code>, <code>COLD_WALLET</code>.</li>
+    <li><strong>PositionDirection:</strong> <code>LONG</code>, <code>SHORT</code> | <strong>MarginType:</strong> <code>ISOLATED</code>, <code>CROSS</code>.</li>
+</ul>
+
+<h2>2.2. Tablas del Sistema y Atributos Almacenados</h2>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th style="width: 20%;">Tabla / Modelo</th>
+            <th style="width: 45%;">Campos y Tipos de Datos</th>
+            <th style="width: 35%;">Propósito y Reglas de Integridad</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><strong>portfolios</strong><br><small>Portfolio</small></td>
+            <td>
+                <code>id</code> (PK, Int, Auto)<br>
+                <code>name</code> (String 100, Not Null)<br>
+                <code>description</code> (String 255, Nullable)<br>
+                <code>base_currency</code> (Enum Currency, Default USD)<br>
+                <code>secondary_currency</code> (Enum Currency, Default ARS)<br>
+                <code>created_at</code>, <code>updated_at</code> (DateTime UTC)
+            </td>
+            <td>Entidad raíz del inversor. Define la moneda dura de referencia (USD) y la moneda local de comparación (ARS) para aislar la inflación. Relación 1:N con <code>accounts</code> (CASCADE).</td>
+        </tr>
+        <tr>
+            <td><strong>accounts</strong><br><small>Account</small></td>
+            <td>
+                <code>id</code> (PK, Int, Auto)<br>
+                <code>portfolio_id</code> (FK a portfolios.id, CASCADE)<br>
+                <code>name</code> (String 100, Not Null)<br>
+                <code>account_type</code> (Enum AccountType)<br>
+                <code>created_at</code>, <code>updated_at</code>
+            </td>
+            <td>Cuentas de custodia o brokers de ejecución (ej. IOL, Balanz, Cocos, Binance). Permite agrupar o consolidar cuentas bajo una misma cartera. Relación 1:N con <code>transactions</code>.</td>
+        </tr>
+        <tr>
+            <td><strong>assets</strong><br><small>Asset</small></td>
+            <td>
+                <code>id</code> (PK, Int, Auto)<br>
+                <code>ticker</code> (String 30, Unique, Index, Not Null)<br>
+                <code>name</code> (String 120, Not Null)<br>
+                <code>asset_class</code> (Enum AssetClass, Index)<br>
+                <code>currency</code> (Enum Currency)<br>
+                <code>cedear_ratio</code> (Numeric 12,4, Nullable)<br>
+                <code>underlying_ticker</code> (String 30, Nullable)<br>
+                <code>bond_face_value</code> (Numeric 18,4, Nullable)<br>
+                <code>bond_maturity_date</code> (Date, Nullable)<br>
+                <code>is_active</code> (Boolean, Default True)<br>
+                <code>notes</code> (String 255, Nullable)
+            </td>
+            <td>Catálogo centralizado de activos. Soporta instrumentos locales con sufijo <code>.BA</code>, ratios de conversión para CEDEARs respecto al subyacente de USA, valor nominal y fecha de vencimiento para bonos soberanos de renta fija, y pares cripto spot/futuros.</td>
+        </tr>
+        <tr>
+            <td><strong>transactions</strong><br><small>Transaction</small></td>
+            <td>
+                <code>id</code> (PK, Int, Auto)<br>
+                <code>account_id</code> (FK a accounts.id, Index)<br>
+                <code>asset_id</code> (FK a assets.id, RESTRICT, Index)<br>
+                <code>transaction_type</code> (Enum TransactionType, Index)<br>
+                <code>executed_at</code> (DateTime TZ, Index)<br>
+                <code>settlement_date</code> (DateTime TZ, Nullable)<br>
+                <code>quantity</code> (Numeric 24,8, Not Null)<br>
+                <code>price</code> (Numeric 18,4, Not Null)<br>
+                <code>currency</code> (Enum Currency, Not Null)<br>
+                <code>fee</code> (Numeric 18,4, Default 0.0)<br>
+                <code>fee_currency</code> (Enum Currency, Nullable)<br>
+                <code>fx_rate</code> (Numeric 18,4, Nullable)<br>
+                <code>fx_rate_type</code> (Enum FxRateType, Nullable)<br>
+                <code>notes</code> (String 255, Nullable)
+            </td>
+            <td>Libro mayor (Ledger) inmutable. Cada transacción registra la cantidad operada (precisión de 8 decimales para satoshis), el precio unitario y el <strong>tipo de cambio implícito o explícito (CCL/MEP) al momento exacto de la operación</strong> para trazabilidad bimonetaria histórica. Propiedades calculadas: <code>gross_amount</code> y <code>net_amount</code>.</td>
+        </tr>
+        <tr>
+            <td><strong>asset_prices</strong><br><small>AssetPrice</small></td>
+            <td>
+                <code>id</code> (PK, Int, Auto)<br>
+                <code>asset_id</code> (FK a assets.id, CASCADE, Index)<br>
+                <code>timestamp</code> (DateTime TZ, Index)<br>
+                <code>open_price</code>, <code>high_price</code>, <code>low_price</code> (Numeric 18,4)<br>
+                <code>close_price</code> (Numeric 18,4, Not Null)<br>
+                <code>volume</code> (Numeric 24,4, Nullable)<br>
+                <code>source</code> (String 50, Default 'YFINANCE')
+            </td>
+            <td>Series temporales OHLCV para valuación Mark-to-Market (MTM). Posee una restricción de unicidad compuesta <code>uq_asset_price_timestamp</code> sobre <code>(asset_id, timestamp)</code> gestionada mediante lógica de actualización (upsert) para evitar duplicados en el cierre diario.</td>
+        </tr>
+        <tr>
+            <td><strong>exchange_rates</strong><br><small>ExchangeRate</small></td>
+            <td>
+                <code>id</code> (PK, Int, Auto)<br>
+                <code>rate_type</code> (Enum FxRateType, Index)<br>
+                <code>timestamp</code> (DateTime TZ, Index)<br>
+                <code>buy_price</code> (Numeric 18,4, Nullable)<br>
+                <code>sell_price</code> (Numeric 18,4, Not Null)<br>
+                <code>source</code> (String 50, Default 'DOLAR_API')
+            </td>
+            <td>Cotizaciones financieras del dólar (CCL, MEP, Oficial, Blue, Cripto). Restricción única <code>uq_fx_rate_timestamp</code> sobre <code>(rate_type, timestamp)</code>. Ingestadas periódicamente de DolarApi.</td>
+        </tr>
+        <tr>
+            <td><strong>crypto_futures_positions</strong><br><small>CryptoFuturesPosition</small></td>
+            <td>
+                <code>id</code> (PK, Int, Auto)<br>
+                <code>account_id</code>, <code>asset_id</code> (FKs)<br>
+                <code>direction</code> (LONG / SHORT)<br>
+                <code>margin_type</code> (ISOLATED / CROSS)<br>
+                <code>leverage</code> (Int, Default 1)<br>
+                <code>position_size</code> (Numeric 24,8)<br>
+                <code>entry_price</code> (Numeric 18,4)<br>
+                <code>initial_margin</code> (Numeric 18,4)<br>
+                <code>maintenance_margin_rate</code> (Numeric 8,4, Default 0.005)<br>
+                <code>liquidation_price</code> (Numeric 18,4)<br>
+                <code>stop_loss_price</code>, <code>take_profit_price</code> (Numeric 18,4)<br>
+                <code>is_open</code> (Boolean, Index)<br>
+                <code>opened_at</code>, <code>closed_at</code>, <code>realized_pnl</code>
+            </td>
+            <td>Control cuantitativo de posiciones en contratos de derivados. Permite calcular PnL no realizado en USD, buffer de margen y distancia porcentual a la liquidación forzada en base al precio de mercado.</td>
+        </tr>
+        <tr>
+            <td><strong>portfolio_risk_snapshots</strong><br><small>PortfolioRiskSnapshot</small></td>
+            <td>
+                <code>id</code> (PK, Int, Auto)<br>
+                <code>portfolio_id</code> (FK a portfolios.id, Index)<br>
+                <code>timestamp</code> (DateTime TZ, Index)<br>
+                <code>total_equity_usd</code>, <code>total_equity_ars</code> (Numeric 18,4)<br>
+                <code>fx_rate_used</code> (Numeric 18,4)<br>
+                <code>ars_exposure_ratio</code> (Numeric 8,4)<br>
+                <code>crypto_notional_usd</code>, <code>leverage_ratio</code> (Numeric 18,4)<br>
+                <code>var_95_daily_usd</code> (Numeric 18,4, Nullable)
+            </td>
+            <td>Entidad histórica para almacenar instantáneas del perfil de riesgo consolidado (Value at Risk al 95%, ratio de apalancamiento y porcentaje de exposición neta al riesgo argentino en ARS).</td>
+        </tr>
+    </tbody>
+</table>
+
+<div class="page-break"></div>
+
+<!-- SECCIÓN 3: ALGORITMOS FINANCIEROS Y DE VALUACIÓN -->
+<h1>3. Algoritmos Financieros y Motor de Valuación Bimonetaria</h1>
+<p>
+    El motor contable reside en <span class="tag">backend/app/services/portfolio_service.py</span> y ejecuta los siguientes modelos matemáticos:
+</p>
+
+<h2>3.1. Algoritmo de Costo Base Ponderado (PPP) Bimonetario</h2>
+<p>
+    Para cada transacción $i$ registrada en el Ledger, el sistema calcula de forma estricta su costo unitario tanto en moneda local ($ARS$) como en moneda dura ($USD$), utilizando el tipo de cambio financiero histórico ($FX_i$) fijado en el momento exacto de la operación:
+</p>
+<div class="formula-box">
+    Si la transacción fue en ARS:<br>
+    &nbsp;&nbsp;&bull; Costo_ARS = Monto_Neto<br>
+    &nbsp;&nbsp;&bull; Costo_USD = Monto_Neto / FX_histórico<br><br>
+    Si la transacción fue en USD:<br>
+    &nbsp;&nbsp;&bull; Costo_USD = Monto_Neto<br>
+    &nbsp;&nbsp;&bull; Costo_ARS = Monto_Neto * FX_histórico
+</div>
+<p>
+    Al acumular compras (<span class="tag">BUY</span>), se incrementan la cantidad y el costo base total. Cuando se produce una venta (<span class="tag">SELL</span>), el sistema aplica una <strong>reducción proporcional estricta del costo base</strong> bajo el estándar de Precio Promedio Ponderado:
+</p>
+<div class="formula-box">
+    Ratio_Venta = min(Cantidad_Vendida / Cantidad_Previa, 1.0)<br>
+    Costo_Base_ARS = Costo_Base_ARS - (Costo_Base_ARS * Ratio_Venta)<br>
+    Costo_Base_USD = Costo_Base_USD - (Costo_Base_USD * Ratio_Venta)<br>
+    Cantidad_Remanente = Cantidad_Previa - Cantidad_Vendida<br><br>
+    Precio Promedio de Compra Unitario (PPP):<br>
+    PPP_USD = Costo_Base_USD / Cantidad_Remanente<br>
+    PPP_ARS = Costo_Base_ARS / Cantidad_Remanente
+</div>
+
+<h2>3.2. Valuación Mark-to-Market (MTM) y Aislamiento de la Ilusión Monetaria</h2>
+<p>
+    Para determinar el valor actual de mercado de la cartera, el sistema obtiene la cotización de mercado más reciente del activo ($P_{mercado}$) y el valor más reciente del <strong>Dólar CCL de venta</strong> ($TC_{CCL}$):
+</p>
+<div class="formula-box">
+    Para Activos cotizados en ARS (Acciones Merval y CEDEARs):<br>
+    &nbsp;&nbsp;Valor_Mercado_ARS = Cantidad * P_mercado<br>
+    &nbsp;&nbsp;Valor_Mercado_USD = Valor_Mercado_ARS / TC_CCL<br><br>
+    Para Activos cotizados en USD (Criptomonedas Spot):<br>
+    &nbsp;&nbsp;Valor_Mercado_USD = Cantidad * P_mercado<br>
+    &nbsp;&nbsp;Valor_Mercado_ARS = Valor_Mercado_USD * TC_CCL
+</div>
+
+<p>
+    A partir de estos valores, se calcula el resultado económico no realizado desglosado en dos dimensiones independientes:
+</p>
+<ul>
+    <li>
+        <strong>Rendimiento Nominal (en Pesos Argentinos - ARS):</strong><br>
+        $$PnL_{ARS} = Valor\_Mercado_{ARS} - Costo\_Base_{ARS}, \quad PnL\%_{ARS} = \left(\frac{PnL_{ARS}}{Costo\_Base_{ARS}}\right) \times 100$$
+        <em>(Sujeto a la ilusión monetaria generada por la pérdida de poder adquisitivo del peso argentino).</em>
+    </li>
+    <li>
+        <strong>Rendimiento Real (en Moneda Dura - USD):</strong><br>
+        $$PnL_{USD} = Valor\_Mercado_{USD} - Costo\_Base_{USD}, \quad PnL\%_{USD} = \left(\frac{PnL_{USD}}{Costo\_Base_{USD}}\right) \times 100$$
+        <em>(Mide la ganancia o pérdida real de capital descontando la devaluación cambiaria).</em>
+    </li>
+</ul>
+
+<h2>3.3. Algoritmos de Riesgo de Derivados Cripto (<span class="tag">app/api/v1/endpoints/risk.py</span>)</h2>
+<ul>
+    <li><strong>Valor Nocional:</strong> $Nocional = Tamaño\_Posición \times Precio\_Entrada$.</li>
+    <li>
+        <strong>PnL No Realizado (USD):</strong>
+        $$PnL_{LONG} = (Precio\_Actual - Precio\_Entrada) \times Tamaño\_Posición$$
+        $$PnL_{SHORT} = (Precio\_Entrada - Precio\_Actual) \times Tamaño\_Posición$$
+    </li>
+    <li>
+        <strong>Buffer de Margen (Distancia Porcentual a Liquidación):</strong>
+        $$Distancia\_Liquidación(\%) = \left(\frac{|Precio\_Actual - Precio\_Liquidación|}{Precio\_Actual}\right) \times 100$$
+    </li>
+    <li>
+        <strong>Clasificación Semafórica de Riesgo:</strong>
+        <br>&bull; $Distancia < 5\% \rightarrow$ <code>CRITICAL_LIQUIDATION_RISK</code> (Alerta máxima de margin call)
+        <br>&bull; $Distancia < 15\% \rightarrow$ <code>HIGH</code> | $Distancia < 30\% \rightarrow$ <code>MODERATE</code> | $\ge 30\% \rightarrow$ <code>LOW</code>.
+    </li>
+</ul>
+
+<div class="page-break"></div>
+
+<!-- SECCIÓN 4: CIENCIA DE DATOS Y MÉTRICAS -->
+<h1>4. Métricas Analíticas y Modelos de Ciencia de Datos</h1>
+
+<div class="callout">
+    <div class="callout-title">Diferenciación Metodológica: Métricas en Producción vs. Modelos Proyectados</div>
+    En estricto apego a las normas académicas, a continuación se distingue entre lo que el software calcula en tiempo real actualmente y los modelos previstos en el esquema de datos.
+</div>
+
+<h2>4.1. Métricas e Inferencias actualmente operativas en el código:</h2>
+<ol>
+    <li>
+        <strong>Variación porcentual y absoluta diaria ($\Delta\%$):</strong>
+        $$\Delta\% = \left(\frac{P_{actual} - P_{cierre\_anterior}}{P_{cierre\_anterior}}\right) \times 100$$
+        Calculada en memoria con una caché TTL de 5 minutos sobre acciones del Merval, CEDEARs y Cripto.
+    </li>
+    <li>
+        <strong>Detección de extremos estadísticos intradía:</strong> Identificación algorítmica instantánea del activo con mayor rendimiento alcista (<code>top_gainer</code>) y el activo con mayor contracción (<code>top_loser</code>) para los paneles bursátiles.
+    </li>
+    <li>
+        <strong>Análisis de concentración y ponderación de cartera:</strong> Cálculo matricial de pesos relativos ($w_i = \frac{V_i}{V_{total}}$) representados en gráficos interactivos de torta (donuts) agrupados por activo o clase de activo.
+    </li>
+    <li>
+        <strong>Buffer dinámico de liquidación forzosa:</strong> Algoritmo de probabilidad de quiebra de posición en base a la proximidad al precio de corte del exchange.
+    </li>
+</ol>
+
+<h2>4.2. Modelos proyectados en el esquema relacional (<span class="tag">portfolio_risk_snapshots</span>):</h2>
+<ul>
+    <li>
+        <strong>Value at Risk (VaR diario al 95% en USD):</strong> Proyectado en la columna <code>var_95_daily_usd</code>. Representa la máxima pérdida esperada en 24 horas bajo condiciones normales de mercado para la cartera consolidada utilizando la matriz de varianzas-covarianzas de <code>numpy</code>/<code>pandas</code>.
+    </li>
+    <li>
+        <strong>Ratio de Exposición al Riesgo Argentino (<code>ars_exposure_ratio</code>):</strong> Porcentaje del patrimonio neto expuesto a activos denominados o dependientes exclusivamente de la economía local en pesos sin cobertura cambiaria.
+    </li>
+    <li>
+        <strong>Ratio de Apalancamiento Consolidado (<code>leverage_ratio</code>):</strong> Cociente entre el valor nocional de posiciones apalancadas y el capital propio (Equity).
+    </li>
+</ul>
+
+<!-- SECCIÓN 5: FRONTEND EN STREAMLIT -->
+<h1>5. Pantallas, Pestañas y Componentes Visuales en Streamlit</h1>
+<p>
+    La aplicación de usuario (<span class="tag">app_visual.py</span>) se conecta a FastAPI en <code>http://localhost:8000/api/v1</code> y cuenta con los siguientes componentes:
+</p>
+
+<h2>5.1. Barra Lateral (Sidebar): Formulario Inteligente de Operaciones</h2>
+<ul>
+    <li><strong>Motor de Autodetección en Tiempo Real:</strong> Al ingresar un ticker (ej. <code>AAPL</code>, <code>GGAL</code>, <code>AL30</code>, <code>BTC</code>), el sistema reconoce automáticamente si corresponde a un <em>CEDEAR</em>, <em>Acción Merval</em>, <em>Bono Soberano</em> o <em>Criptomoneda</em>, añadiendo los sufijos correspondientes (<code>.BA</code> o <code>-USD</code>) sin requerir selección manual.</li>
+    <li><strong>Recuadro de Confirmación Sobrio:</strong> Al tipear, despliega un recuadro azul sin emojis que confirma la clase y el ticker normalizado.</li>
+    <li><strong>Parámetros Numéricos:</strong> Cantidad (default <code>0.00</code>), Precio Unitario (default <code>0.00</code>), Moneda (ARS, USD, USDT) y Comisión Broker en porcentaje (default <code>0.50%</code>).</li>
+    <li><strong>Desglose Condicional:</strong> El Subtotal, la Comisión en monto monetario y el Total Estimado solo se calculan y visualizan cuando el usuario ha tipeado un ticker y valores mayores a cero, evitando confusiones con transacciones inexistentes.</li>
+    <li><strong>Botón de Sincronización Manual:</strong> Permite forzar la ingesta instantánea de precios sin esperar el ciclo de 5 minutos de APScheduler.</li>
+</ul>
+
+<h2>5.2. Dashboard Principal y Navegación</h2>
+<ul>
+    <li><strong>Cabecera Bimonetaria con Toggle:</strong> Botón de selección que alterna toda la vista entre <strong>USD (Moneda Dura)</strong> y <strong>ARS (Pesos)</strong>.</li>
+    <li><strong>KPIs Globales:</strong> 4 tarjetas estilizadas con CSS que muestran: <em>Valor Total de Cartera</em>, <em>Costo Base Invertido</em>, <em>Rendimiento Total (P&L) con delta porcentual</em> y <em>Dólar CCL de Valuación</em>.</li>
+    <li><strong>Pestaña 1: "📊 Mi Cartera & Tenencias":</strong> Gráfico interactivo Plotly Donut (conmutador por Ticker o por Clase de Activo), gráfico de barras de P&L por activo, selector de filtro por categoría y tabla formateada con Precio Promedio de Compra (PPP).</li>
+    <li><strong>Pestaña 2: "📈 Cotizaciones":</strong> Menú desplegable unificado con 3 monitores en tiempo real:
+        <ul>
+            <li><em>Acciones Líderes (S&P Merval):</em> Buscador, métricas de mayor alza/baja y tabla con Apertura, Cierre, Variación %, Máx y Mín.</li>
+            <li><em>Principales CEDEARs (ByMA):</em> Buscador interactivo y tabla con 23 activos internacionales operados en pesos.</li>
+            <li><em>Criptomonedas (BTC, ETH, SOL):</em> Tarjetas métricas con equivalencia en pesos al CCL, gráfico comparativo de 24h y tabla completa.</li>
+        </ul>
+    </li>
+    <li><strong>Pestaña 3: "💵 Dólar en Tiempo Real":</strong> Cotizaciones de compra y venta para Dólar CCL, MEP, Oficial, Blue y Cripto, junto a un gráfico de barras comparativo de brecha cambiaria.</li>
+    <li><strong>Pestaña 4: "📜 Historial de Operaciones":</strong> Vista tabular del libro contable (Ledger) con auditoría cronológica de cada operación, comisión abonada y tipo de cambio aplicado.</li>
+    <li><strong>Pestaña 5: "⚡ Gestión de Riesgo (Futuros)":</strong> Paneles desplegables por contrato con precio de entrada, cotización actual, precio de liquidación, buffer de margen con barra de progreso y alertas semafóricas.</li>
+</ul>
+
+</body>
+</html>

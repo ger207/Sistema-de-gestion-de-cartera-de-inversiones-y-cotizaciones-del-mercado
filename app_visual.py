@@ -354,6 +354,23 @@ if st.sidebar.button("🔄 Sincronizar Cotizaciones Ahora", use_container_width=
         st.sidebar.success("Mercado sincronizado con éxito.")
         st.rerun()
 
+# Botón para descargar el PDF de documentación académica del proyecto
+pdf_candidates = [
+    os.path.join(os.path.dirname(__file__), "..", "Documento_Tecnico_Proyecto_Integrador.pdf"),
+    os.path.join(os.path.dirname(__file__), "Documento_Tecnico_Proyecto_Integrador.pdf"),
+    "Documento_Tecnico_Proyecto_Integrador.pdf"
+]
+pdf_file_path = next((p for p in pdf_candidates if os.path.exists(p)), None)
+if pdf_file_path:
+    with open(pdf_file_path, "rb") as pdf_file:
+        st.sidebar.download_button(
+            label="📄 Descargar Documentación (PDF)",
+            data=pdf_file.read(),
+            file_name="Documento_Tecnico_Proyecto_Integrador.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+
 
 # ==============================================================================
 # CABECERA Y CONTROL DE MONEDA (TOGGLE ARS / USD)
