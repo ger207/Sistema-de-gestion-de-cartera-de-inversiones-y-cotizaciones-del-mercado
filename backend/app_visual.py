@@ -919,42 +919,288 @@ with tab_transactions:
 
 
 # ------------------------------------------------------------------------------
-# TAB 5: GESTIÓN DE RIESGO (FUTUROS CRIPTO)
+# TAB 5: GESTIÓN DE RIESGO EN FUTUROS DE BITCOIN (SIMULADOR Y CALCULADORA INFORMATIVA)
 # ------------------------------------------------------------------------------
 with tab_risk:
-    st.subheader("⚡ Supervisión de Posiciones de Futuros & Margen")
-    st.caption("Monitoreo de apalancamiento, precio de liquidación y niveles de Stop-Loss")
+    st.subheader("⚡ Gestión de Riesgo y Simulador de Futuros (Bitcoin / BTC)")
+    st.caption("Herramienta cuantitativa e informativa para calcular apalancamiento, liquidación forzosa, márgenes y ratios de riesgo.")
 
-    futures_list = fetch_api("/risk/futures")
+    # 1. Obtener precio actual de Bitcoin en tiempo real (vía crypto-panel / BTC-USD)
+    crypto_feed = fetch_api("/market-data/crypto-panel")
+    btc_data = next((c for c in (crypto_feed or []) if c.get("symbol") == "BTC"), None)
 
-    if futures_list:
-        for pos in futures_list:
-            pos_id = pos["id"]
-            risk_status = fetch_api(f"/risk/futures/{pos_id}/risk-status")
-            
-            if risk_status:
-                with st.expander(f"📌 Posición #{pos_id}: {risk_status['ticker']} ({risk_status['direction']} {risk_status['leverage']})", expanded=True):
-                    col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-                    
-                    with col_r1:
-                        st.metric("Precio de Entrada", f"${safe_float(risk_status['entry_price']):,.2f}")
-                    with col_r2:
-                        st.metric("Precio Actual", f"${safe_float(risk_status['current_price']):,.2f}")
-                    with col_r3:
-                        st.metric("Precio de Liquidación", f"${safe_float(risk_status['liquidation_price']):,.2f}")
-                    with col_r4:
-                        dist_liq = safe_float(risk_status["distance_to_liquidation_pct"])
-                        risk_level = risk_status["risk_level"]
-                        delta_color = "normal" if dist_liq > 15 else "inverse"
-                        st.metric("Distancia a Liquidación", f"{dist_liq:.2f}%", delta=risk_level, delta_color=delta_color)
-
-                    buffer_pct = min(max(dist_liq, 0.0), 100.0)
-                    st.progress(buffer_pct / 100.0, text=f"Buffer de Seguridad de Margen: {buffer_pct:.1f}%")
-                    
-                    st.caption(
-                        f"🛡️ **Take-Profit:** ${risk_status.get('take_profit_price') or 'No fijado'} | "
-                        f"🛑 **Stop-Loss:** ${risk_status.get('stop_loss_price') or 'No fijado'} | "
-                        f"💰 **PnL No Realizado:** ${safe_float(risk_status['unrealized_pnl_usd']):+,.2f} USD"
-                    )
+    if btc_data:
+        real_btc_price = safe_float(btc_data.get("current_price"), 80000.0)
+        btc_change_24h = safe_float(btc_data.get("change_pct"), 0.0)
+        btc_high_24h = safe_float(btc_data.get("high_price"), real_btc_price)
+        btc_low_24h = safe_float(btc_data.get("low_price"), real_btc_price)
     else:
-        st.info("No hay posiciones abiertas en contratos de futuros cripto.")
+        real_btc_price = 80497.0
+        btc_change_24h = 0.0
+        btc_high_24h = 81500.0
+        btc_low_24h = 80000.0
+
+    # Tarjeta de referencia de mercado en vivo
+    st.markdown("#### ₿ Cotización de Referencia en Tiempo Real")
+    c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+    with c_m1:
+        st.metric(
+            label="Precio Actual BTC (USD)",
+            value=f"${real_btc_price:,.2f} USD",
+            delta=f"{btc_change_24h:+.2f}% (24h)"
+        )
+    with c_m2:
+        btc_ars_equiv = real_btc_price * ccl_rate_used
+        st.metric(
+            label="Equivalente en Pesos (CCL)",
+            value=f"ARS ${btc_ars_equiv:,.0f}"
+        )
+    with c_m3:
+        st.metric(
+            label="Rango 24h (Mín - Máx)",
+            value=f"${btc_low_24h:,.0f} - ${btc_high_24h:,.0f}"
+        )
+    with c_m4:
+        st.metric(
+            label="Contrato de Referencia",
+            value="BTC/USDT Perpetuo",
+            delta="Margen Aislado"
+        )
+
+    st.markdown("---")
+
+    # 2. Formulario interactivo de parámetros de posición
+    st.markdown("#### ⚙️ Parámetros de la Posición a Simular")
+    col_input1, col_input2 = st.columns(2)
+
+    with col_input1:
+        position_direction = st.radio(
+            "Dirección de la Operación:",
+            options=["LONG (Compra / Alcista)", "SHORT (Venta en Corto / Bajista)"],
+            horizontal=True,
+            index=0
+        )
+        is_long = "LONG" in position_direction
+
+        # Precio de entrada: por defecto el precio en tiempo real
+        entry_price = st.number_input(
+            "Precio de Entrada (USD):",
+            min_value=1000.0,
+            max_value=500000.0,
+            value=float(round(real_btc_price, 2)),
+            step=100.0,
+            format="%.2f",
+            help="Precio en el que se ejecuta o planea la apertura de la posición."
+        )
+
+        initial_margin = st.number_input(
+            "Margen Inicial / Colateral Aportado (USD):",
+            min_value=10.0,
+            max_value=1000000.0,
+            value=1000.0,
+            step=100.0,
+            format="%.2f",
+            help="Capital propio asignado como garantía para la posición."
+        )
+
+    with col_input2:
+        leverage = st.slider(
+            "Apalancamiento (Leverage):",
+            min_value=1,
+            max_value=50,
+            value=10,
+            step=1,
+            help="Multiplicador del poder de compra sobre el margen inicial (ej: 10x)."
+        )
+
+        mmr_percentage = st.number_input(
+            "Tasa de Margen de Mantenimiento MMR (%):",
+            min_value=0.1,
+            max_value=5.0,
+            value=0.40,
+            step=0.05,
+            format="%.2f",
+            help="Tasa mínima de margen requerida por el exchange para evitar liquidación (estándar BTC en Binance/Bybit: 0.40%)."
+        )
+        mmr_decimal = mmr_percentage / 100.0
+
+        st.caption(f"ℹ️ Con apalancamiento de **{leverage}x**, cada 1% de movimiento en BTC representa un **{leverage * 1:.1f}% de rendimiento (ROE)** sobre tu capital.")
+
+    # 3. Fórmulas financieras y cálculos cuantitativos
+    notional_value = initial_margin * leverage
+    btc_quantity = notional_value / entry_price if entry_price > 0 else 0.0
+
+    # Precio de Liquidación
+    if is_long:
+        liquidation_price = entry_price * (1.0 - (1.0 / leverage) + mmr_decimal)
+        liquidation_price = max(liquidation_price, 0.0)
+    else:
+        liquidation_price = entry_price * (1.0 + (1.0 / leverage) - mmr_decimal)
+
+    # Distancia al precio de liquidación desde el precio actual
+    if real_btc_price > 0:
+        distance_to_liq_pct = (abs(real_btc_price - liquidation_price) / real_btc_price) * 100.0
+    else:
+        distance_to_liq_pct = 0.0
+
+    # PnL no realizado al precio actual
+    if is_long:
+        unrealized_pnl_usd = (real_btc_price - entry_price) * btc_quantity
+    else:
+        unrealized_pnl_usd = (entry_price - real_btc_price) * btc_quantity
+
+    roe_pct = (unrealized_pnl_usd / initial_margin * 100.0) if initial_margin > 0 else 0.0
+
+    # Clasificación semafórica de riesgo
+    if distance_to_liq_pct < 5.0:
+        risk_label = "CRÍTICO / LIQUIDACIÓN INMINENTE"
+        risk_color = "inverse"
+    elif distance_to_liq_pct < 15.0:
+        risk_label = "ALTO RIESGO"
+        risk_color = "inverse"
+    elif distance_to_liq_pct < 30.0:
+        risk_label = "RIESGO MODERADO"
+        risk_color = "normal"
+    else:
+        risk_label = "RIESGO BAJO / BUFFER SEGURO"
+        risk_color = "normal"
+
+    st.markdown("---")
+    st.markdown("#### 📊 Diagnóstico y Métricas de Liquidación")
+
+    c_r1, c_r2, c_r3, c_r4 = st.columns(4)
+    with c_r1:
+        st.metric(
+            label="Valor Nocional Total",
+            value=f"${notional_value:,.2f} USD",
+            delta=f"{btc_quantity:.4f} BTC"
+        )
+    with c_r2:
+        st.metric(
+            label="Precio de Liquidación Estimado",
+            value=f"${liquidation_price:,.2f} USD",
+            delta=f"{'-' if is_long else '+'}{abs((liquidation_price - entry_price)/entry_price)*100:.2f}% de caída" if is_long else f"+{abs((liquidation_price - entry_price)/entry_price)*100:.2f}% de subida",
+            delta_color="inverse"
+        )
+    with c_r3:
+        st.metric(
+            label="Distancia a Liquidación",
+            value=f"{distance_to_liq_pct:.2f}%",
+            delta=risk_label,
+            delta_color=risk_color
+        )
+    with c_r4:
+        st.metric(
+            label="PnL Teórico al Precio Actual",
+            value=f"{unrealized_pnl_usd:+,.2f} USD",
+            delta=f"ROE: {roe_pct:+.2f}%",
+            delta_color="normal" if unrealized_pnl_usd >= 0 else "inverse"
+        )
+
+    # Barra visual de buffer de margen
+    buffer_display = min(max(distance_to_liq_pct, 0.0), 100.0)
+    st.progress(buffer_display / 100.0, text=f"Margen de Seguridad contra Liquidación: {buffer_display:.1f}%")
+
+    # 4. Sección de Gestión de Riesgo (TP / SL / Ratio R:R)
+    st.markdown("---")
+    st.markdown("#### 🛡️ Niveles de Mitigación de Riesgo (Stop-Loss & Take-Profit)")
+
+    col_tp_sl1, col_tp_sl2 = st.columns(2)
+    default_tp = entry_price * (1.05 if is_long else 0.95)
+    default_sl = entry_price * (0.98 if is_long else 1.02)
+
+    with col_tp_sl1:
+        tp_price = st.number_input(
+            "Precio de Take-Profit (Objetivo):",
+            min_value=0.0,
+            value=float(round(default_tp, 2)),
+            step=100.0,
+            format="%.2f",
+            help="Nivel donde se cerrará la posición con beneficios."
+        )
+    with col_tp_sl2:
+        sl_price = st.number_input(
+            "Precio de Stop-Loss (Corte de Pérdidas):",
+            min_value=0.0,
+            value=float(round(default_sl, 2)),
+            step=100.0,
+            format="%.2f",
+            help="Nivel donde se cerrará automáticamente la posición para proteger el capital antes de la liquidación."
+        )
+
+    # Validación y cálculo de Ratio Riesgo-Beneficio
+    if is_long:
+        tp_gain_usd = (tp_price - entry_price) * btc_quantity
+        sl_loss_usd = (entry_price - sl_price) * btc_quantity
+        sl_is_safe = sl_price > liquidation_price
+    else:
+        tp_gain_usd = (entry_price - tp_price) * btc_quantity
+        sl_loss_usd = (sl_price - entry_price) * btc_quantity
+        sl_is_safe = sl_price < liquidation_price
+
+    tp_roe = (tp_gain_usd / initial_margin * 100.0) if initial_margin > 0 else 0.0
+    sl_roe = (sl_loss_usd / initial_margin * 100.0) if initial_margin > 0 else 0.0
+    rr_ratio = (tp_gain_usd / sl_loss_usd) if sl_loss_usd > 0 else 0.0
+
+    c_tp1, c_tp2, c_tp3 = st.columns(3)
+    with c_tp1:
+        st.metric(
+            label="Ganancia en Take-Profit (USD)",
+            value=f"+${tp_gain_usd:,.2f} USD",
+            delta=f"ROE: +{tp_roe:.2f}%",
+            delta_color="normal"
+        )
+    with c_tp2:
+        st.metric(
+            label="Pérdida en Stop-Loss (USD)",
+            value=f"-${sl_loss_usd:,.2f} USD",
+            delta=f"ROE: -{sl_roe:.2f}%",
+            delta_color="inverse"
+        )
+    with c_tp3:
+        st.metric(
+            label="Ratio Riesgo / Beneficio (R:R)",
+            value=f"1 : {rr_ratio:.2f}" if rr_ratio > 0 else "N/A",
+            delta="Favorable (>= 2.0)" if rr_ratio >= 2.0 else "Revisar ratio (< 2.0)",
+            delta_color="normal" if rr_ratio >= 2.0 else "off"
+        )
+
+    if not sl_is_safe:
+        st.error(
+            f"⚠️ **Peligro de Liquidación:** El Stop-Loss (${sl_price:,.2f}) está fijado por "
+            f"{'debajo' if is_long else 'encima'} del Precio de Liquidación (${liquidation_price:,.2f}). "
+            f"La posición será liquidada por el exchange antes de que el Stop-Loss pueda ejecutarse."
+        )
+    else:
+        st.success(
+            f"✅ **Stop-Loss Válido:** Tu Stop-Loss se ejecutará con un margen de seguridad de "
+            f"${abs(sl_price - liquidation_price):,.2f} USD antes de alcanzar la liquidación forzosa."
+        )
+
+    # 5. Tabla comparativa de sensibilidad según apalancamiento
+    st.markdown("---")
+    st.markdown("#### 🔬 Tabla Comparativa de Apalancamientos (Sensibilidad al Riesgo)")
+    st.caption("Proyección cuantitativa para el mismo margen aportado ($" + f"{initial_margin:,.2f} USD):")
+
+    leverage_levels = [2, 5, 10, 20, 25, 50]
+    comp_rows = []
+    for lev in leverage_levels:
+        notional_lev = initial_margin * lev
+        btc_qty_lev = notional_lev / entry_price if entry_price > 0 else 0.0
+        if is_long:
+            liq_lev = entry_price * (1.0 - (1.0 / lev) + mmr_decimal)
+            drop_tolerated = ((entry_price - liq_lev) / entry_price) * 100.0
+        else:
+            liq_lev = entry_price * (1.0 + (1.0 / lev) - mmr_decimal)
+            drop_tolerated = ((liq_lev - entry_price) / entry_price) * 100.0
+
+        comp_rows.append({
+            "Apalancamiento": f"{lev}x",
+            "Nocional (USD)": f"${notional_lev:,.2f}",
+            "Contratos BTC": f"{btc_qty_lev:.4f}",
+            "Precio Liquidación": f"${liq_lev:,.2f}",
+            "Movimiento Tolerado (%)": f"{drop_tolerated:.2f}%",
+            "Nivel de Riesgo": "Muy Bajo" if lev <= 2 else ("Bajo" if lev <= 5 else ("Moderado" if lev <= 10 else ("Alto" if lev <= 25 else "Extremo")))
+        })
+
+    st.dataframe(pd.DataFrame(comp_rows), use_container_width=True)
