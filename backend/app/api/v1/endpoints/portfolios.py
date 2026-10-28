@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.portfolio import Portfolio, Account
-from app.models.enums import FxRateType
+from app.models.enums import FxRateType, AccountType
 from app.schemas.portfolio import PortfolioCreate, PortfolioResponse, AccountCreate, AccountResponse
 from app.services.portfolio_service import PortfolioService
 
@@ -18,6 +18,16 @@ def list_portfolios(db: Session = Depends(get_db)):
 def create_portfolio(portfolio_in: PortfolioCreate, db: Session = Depends(get_db)):
     portfolio = Portfolio(**portfolio_in.model_dump())
     db.add(portfolio)
+    db.commit()
+    db.refresh(portfolio)
+
+    # Crear cuenta de custodia por defecto automáticamente para habilitar operaciones inmediatas
+    default_acc = Account(
+        portfolio_id=portfolio.id,
+        name="Cuenta Principal",
+        account_type=AccountType.BROKER_LOCAL
+    )
+    db.add(default_acc)
     db.commit()
     db.refresh(portfolio)
     return portfolio

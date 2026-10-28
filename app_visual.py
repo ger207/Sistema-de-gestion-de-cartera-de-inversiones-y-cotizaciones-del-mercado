@@ -189,32 +189,95 @@ if not backend_health:
 
 
 # ==============================================================================
-# CARGA DE CARTERA UNIFICADA (SIN SELECCIÓN MANUAL DE CUENTAS NI BROKERS)
+# GESTIÓN Y SELECCIÓN DE CARTERAS MULTI-PORTFOLIO
 # ==============================================================================
 portfolios = fetch_api("/portfolios/")
-if not portfolios:
-    st.warning("No hay carteras registradas. Por favor ejecuta el script de inicialización o crea una.")
-    st.stop()
 
-# Cartera única consolidada
-active_portfolio = portfolios[0]
+# Crear cartera inicial automática si la base de datos estuviera vacía
+if not portfolios:
+    init_res = post_api("/portfolios/", {
+        "name": "Mi Cartera Principal",
+        "description": "Cartera consolidada de inversiones",
+        "base_currency": "USD",
+        "secondary_currency": "ARS"
+    })
+    if init_res and init_res.status_code in [200, 201]:
+        st.cache_data.clear()
+        st.rerun()
+    else:
+        st.warning("No hay carteras registradas y no se pudo inicializar la cartera por defecto.")
+        st.stop()
+
+portfolio_dict = {p["id"]: p for p in portfolios}
+
+# Persistir la cartera seleccionada en session_state
+if "selected_portfolio_id" not in st.session_state or st.session_state["selected_portfolio_id"] not in portfolio_dict:
+    st.session_state["selected_portfolio_id"] = portfolios[0]["id"]
+
+# ==============================================================================
+# SIDEBAR: SELECTOR Y CREACIÓN DE CARTERAS
+# ==============================================================================
+st.sidebar.image("https://img.icons8.com/fluency/96/bullish.png", width=64)
+st.sidebar.title("Gestor de Carteras")
+
+portfolio_ids = [p["id"] for p in portfolios]
+current_p_index = portfolio_ids.index(st.session_state["selected_portfolio_id"])
+
+selected_p_id = st.sidebar.selectbox(
+    "📁 Cartera Activa:",
+    options=portfolio_ids,
+    index=current_p_index,
+    format_func=lambda pid: portfolio_dict[pid]["name"],
+    help="Selecciona qué cartera deseas supervisar y operar."
+)
+st.session_state["selected_portfolio_id"] = selected_p_id
+
+active_portfolio = portfolio_dict[selected_p_id]
 portfolio_id = active_portfolio["id"]
 accounts = active_portfolio.get("accounts", [])
-# Cuenta por defecto para imputar operaciones automáticamente
+
+# Si la cartera no tuviese cuenta de custodia creada, crearla automáticamente
+if not accounts:
+    acc_res = post_api("/portfolios/accounts", {
+        "portfolio_id": portfolio_id,
+        "name": "Cuenta Principal",
+        "account_type": "BROKER_LOCAL"
+    })
+    if acc_res and acc_res.status_code in [200, 201]:
+        st.cache_data.clear()
+        st.rerun()
+
 default_account_id = accounts[0]["id"] if accounts else None
 existing_assets_cache = fetch_api("/assets/") or []
 
+# Expander para crear una nueva cartera
+with st.sidebar.expander("➕ Crear Nueva Cartera", expanded=False):
+    new_p_name = st.text_input("Nombre de la Cartera:", placeholder="Ej: Cartera Cripto, Dividendos...").strip()
+    new_p_desc = st.text_input("Descripción (Opcional):", placeholder="Ej: Estrategia largo plazo").strip()
+    create_p_btn = st.button("🚀 Crear Cartera", use_container_width=True)
+    if create_p_btn:
+        if not new_p_name:
+            st.sidebar.error("Debes ingresar un nombre válido.")
+        else:
+            payload = {
+                "name": new_p_name,
+                "description": new_p_desc or f"Cartera {new_p_name}",
+                "base_currency": "USD",
+                "secondary_currency": "ARS"
+            }
+            res = post_api("/portfolios/", payload)
+            if res and res.status_code in [200, 201]:
+                created_p = res.json()
+                st.session_state["selected_portfolio_id"] = created_p["id"]
+                st.cache_data.clear()
+                st.sidebar.success(f"¡Cartera '{new_p_name}' creada con éxito!")
+                st.rerun()
+            else:
+                st.sidebar.error("Error al crear la cartera.")
 
-# ==============================================================================
-# SIDEBAR: FORMULARIO INTELIGENTE DE TRANSACCIONES (AUTODETECCIÓN DE CLASE)
-# ==============================================================================
-st.sidebar.image("https://img.icons8.com/fluency/96/bullish.png", width=64)
-st.sidebar.title("Gestión de Cartera")
-st.sidebar.markdown(f"**Cartera Unificada:** `{active_portfolio['name']}`")
-st.sidebar.caption("Todas las cuentas y activos consolidados.")
 st.sidebar.markdown("---")
-
 st.sidebar.subheader("➕ Nueva Operación")
+st.sidebar.caption(f"Operando en: **{active_portfolio['name']}**")
 
 with st.sidebar.form(key="transaction_form", clear_on_submit=False):
     # 1. Entrada inteligente de Ticker (SIN selector manual de clase)
@@ -361,7 +424,7 @@ if st.sidebar.button("🔄 Sincronizar Cotizaciones Ahora", use_container_width=
 col_title, col_toggle = st.columns([3, 1])
 
 with col_title:
-    st.title("💼 Gestor de Carteras Bimonetarias")
+    st.title(f"💼 {active_portfolio['name']}")
     st.caption("Seguimiento automatizado en tiempo real | Aislamiento de ilusión monetaria")
 
 with col_toggle:
@@ -393,26 +456,30 @@ if is_usd:
     total_cost = safe_float(valuation_data.get("total_cost_usd"))
     total_pnl = safe_float(valuation_data.get("total_pnl_usd"))
     pnl_pct = safe_float(valuation_data.get("total_pnl_pct_usd"))
+    realized_pnl = safe_float(valuation_data.get("realized_pnl_usd"))
+    unrealized_pnl = safe_float(valuation_data.get("unrealized_pnl_usd"))
     currency_symbol = "USD $"
 else:
     total_val = safe_float(valuation_data.get("total_value_ars"))
     total_cost = safe_float(valuation_data.get("total_cost_ars"))
     total_pnl = safe_float(valuation_data.get("total_pnl_ars"))
     pnl_pct = safe_float(valuation_data.get("total_pnl_pct_ars"))
+    realized_pnl = safe_float(valuation_data.get("realized_pnl_ars"))
+    unrealized_pnl = safe_float(valuation_data.get("unrealized_pnl_ars"))
     currency_symbol = "ARS $"
 
 col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
 
 with col_kpi1:
     st.metric(
-        label="Valor Total de Cartera (MTM)",
+        label="Valor Total en Activos (MTM)",
         value=f"{currency_symbol} {total_val:,.2f}",
         delta=f"{pnl_pct:+.2f}%",
     )
 
 with col_kpi2:
     st.metric(
-        label="Costo Base Invertido (PPP)",
+        label="Costo Base Tenencias (PPP)",
         value=f"{currency_symbol} {total_cost:,.2f}",
     )
 
@@ -421,7 +488,8 @@ with col_kpi3:
         label="Rendimiento Total (P&L)",
         value=f"{currency_symbol} {total_pnl:,.2f}",
         delta=f"{pnl_pct:+.2f}%",
-        delta_color="normal"
+        delta_color="normal",
+        help=f"Realizado (Ventas): {currency_symbol} {realized_pnl:+,.2f} | No Realizado (Tenencias): {currency_symbol} {unrealized_pnl:+,.2f}"
     )
 
 with col_kpi4:
@@ -430,6 +498,12 @@ with col_kpi4:
         value=f"ARS ${ccl_rate_used:,.2f}",
         help="Tipo de cambio financiero aplicado para la conversión bimonetaria."
     )
+
+st.caption(
+    f"📈 **Desglose de Rendimiento Total:** "
+    f"Realizado en Ventas: **{currency_symbol} {realized_pnl:+,.2f}** | "
+    f"No Realizado (Tenencias Abiertas): **{currency_symbol} {unrealized_pnl:+,.2f}**"
+)
 
 
 # ==============================================================================
@@ -449,6 +523,7 @@ tab_main, tab_quotes, tab_dolar, tab_transactions, tab_risk = st.tabs([
 # ------------------------------------------------------------------------------
 with tab_main:
     raw_holdings = valuation_data.get("holdings", [])
+    closed_holdings = valuation_data.get("closed_positions", [])
 
     if raw_holdings:
         # Normalizar datos de tenencias a floats limpios incluyendo Precio Promedio de Compra (PPP)
@@ -587,8 +662,55 @@ with tab_main:
         else:
             st.info(f"No posees tenencias activas en la categoría '{category_filter}'.")
 
+        if closed_holdings:
+            st.markdown("---")
+            with st.expander(f"📦 Posiciones Cerradas / Ventas Realizadas ({len(closed_holdings)} activos)", expanded=False):
+                df_closed = pd.DataFrame(closed_holdings)
+                col_c_pnl = "realized_pnl_usd" if is_usd else "realized_pnl_ars"
+                col_c_cost = "realized_cost_usd" if is_usd else "realized_cost_ars"
+                col_c_pct = "pnl_pct_usd" if is_usd else "pnl_pct_ars"
+
+                df_c_disp = df_closed[["ticker", "name", "asset_class", col_c_cost, col_c_pnl, col_c_pct]].copy()
+                df_c_disp.columns = [
+                    "Ticker", "Nombre", "Clase",
+                    f"Costo Total Operado ({'USD' if is_usd else 'ARS'})",
+                    f"Ganancia/Pérdida Realizada ({'USD' if is_usd else 'ARS'})",
+                    "Retorno Realizado (%)"
+                ]
+                st.dataframe(
+                    df_c_disp.style.format({
+                        f"Costo Total Operado ({'USD' if is_usd else 'ARS'})": "${:,.2f}",
+                        f"Ganancia/Pérdida Realizada ({'USD' if is_usd else 'ARS'})": "{:+,.2f}",
+                        "Retorno Realizado (%)": "{:+.2f}%"
+                    }),
+                    use_container_width=True
+                )
+
     else:
-        st.info("No hay tenencias abiertas en esta cartera. Utiliza el formulario lateral para cargar tu primera compra.")
+        if closed_holdings:
+            st.info(f"No posees activos en tenencia abierta en '{active_portfolio['name']}'. Todas las posiciones han sido cerradas. A continuación se detallan las operaciones cerradas con sus ganancias realizadas:")
+            df_closed = pd.DataFrame(closed_holdings)
+            col_c_pnl = "realized_pnl_usd" if is_usd else "realized_pnl_ars"
+            col_c_cost = "realized_cost_usd" if is_usd else "realized_cost_ars"
+            col_c_pct = "pnl_pct_usd" if is_usd else "pnl_pct_ars"
+
+            df_c_disp = df_closed[["ticker", "name", "asset_class", col_c_cost, col_c_pnl, col_c_pct]].copy()
+            df_c_disp.columns = [
+                "Ticker", "Nombre", "Clase",
+                f"Costo Total Operado ({'USD' if is_usd else 'ARS'})",
+                f"Ganancia/Pérdida Realizada ({'USD' if is_usd else 'ARS'})",
+                "Retorno Realizado (%)"
+            ]
+            st.dataframe(
+                df_c_disp.style.format({
+                    f"Costo Total Operado ({'USD' if is_usd else 'ARS'})": "${:,.2f}",
+                    f"Ganancia/Pérdida Realizada ({'USD' if is_usd else 'ARS'})": "{:+,.2f}",
+                    "Retorno Realizado (%)": "{:+.2f}%"
+                }),
+                use_container_width=True
+            )
+        else:
+            st.info(f"No hay operaciones registradas en '{active_portfolio['name']}'. Utiliza el formulario lateral para cargar tu primera compra.")
 
 
 # ------------------------------------------------------------------------------
@@ -882,8 +1004,8 @@ with tab_dolar:
 # TAB 4: HISTORIAL DE TRANSACCIONES (LEDGER)
 # ------------------------------------------------------------------------------
 with tab_transactions:
-    st.subheader("📜 Libro Contable de Movimientos")
-    tx_list = fetch_api("/transactions/")
+    st.subheader(f"📜 Libro Contable de Movimientos - {active_portfolio['name']}")
+    tx_list = fetch_api(f"/transactions/?portfolio_id={portfolio_id}")
 
     if tx_list:
         df_tx = pd.DataFrame(tx_list)

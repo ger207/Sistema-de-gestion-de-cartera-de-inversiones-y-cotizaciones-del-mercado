@@ -11,10 +11,19 @@ from app.schemas.transaction import TransactionCreate, TransactionResponse
 router = APIRouter()
 
 @router.get("/", response_model=List[TransactionResponse], summary="Listar transacciones registradas")
-def list_transactions(account_id: int = None, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def list_transactions(
+    account_id: int = None,
+    portfolio_id: int = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
     query = db.query(Transaction)
     if account_id:
         query = query.filter(Transaction.account_id == account_id)
+    elif portfolio_id:
+        acc_ids = [acc.id for acc in db.query(Account.id).filter(Account.portfolio_id == portfolio_id).all()]
+        query = query.filter(Transaction.account_id.in_(acc_ids))
     return query.order_by(Transaction.executed_at.desc()).offset(skip).limit(limit).all()
 
 @router.post("/", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED, summary="Registrar nueva transacción (Ledger)")

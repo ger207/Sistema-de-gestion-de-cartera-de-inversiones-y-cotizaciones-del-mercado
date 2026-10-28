@@ -21,15 +21,21 @@ class PortfolioService:
     """
 
     @classmethod
-    def calculate_holdings(cls, db: Session, portfolio_id: int) -> List[Dict[str, Any]]:
+    def calculate_positions_and_pnl(cls, db: Session, portfolio_id: int):
         """
-        Recorre el libro contable de transacciones y genera las tenencias consolidadas
-        con su respectivo costo base ponderado (PPP) tanto en ARS como en USD.
+        Recorre el libro contable de transacciones y genera:
+        1. Tenencias activas abiertas con su costo base ponderado (PPP).
+        2. Posiciones cerradas con su resultado realizado acumulado (Realized PnL).
+        3. Resumen agregado de PnL realizado tanto en ARS como en USD.
         """
-        # Obtener todas las cuentas del portafolio
         account_ids = [acc.id for acc in db.query(Account.id).filter(Account.portfolio_id == portfolio_id).all()]
         if not account_ids:
-            return []
+            return [], [], {
+                "realized_pnl_usd": Decimal("0.0"),
+                "realized_pnl_ars": Decimal("0.0"),
+                "realized_cost_usd": Decimal("0.0"),
+                "realized_cost_ars": Decimal("0.0"),
+            }
 
         # Obtener todas las transacciones ordenadas cronológicamente
         txs = (
@@ -39,9 +45,11 @@ class PortfolioService:
             .all()
         )
 
-        # Estructura de consolidación por activo
-        # asset_id -> {qty, total_cost_ars, total_cost_usd}
         holdings_map: Dict[int, Dict[str, Any]] = {}
+        total_realized_pnl_ars = Decimal("0.0")
+        total_realized_pnl_usd = Decimal("0.0")
+        total_realized_cost_ars = Decimal("0.0")
+        total_realized_cost_usd = Decimal("0.0")
 
         for tx in txs:
             asset_id = tx.asset_id
@@ -51,35 +59,80 @@ class PortfolioService:
                     "quantity": Decimal("0.0"),
                     "total_cost_ars": Decimal("0.0"),
                     "total_cost_usd": Decimal("0.0"),
+                    "realized_pnl_ars": Decimal("0.0"),
+                    "realized_pnl_usd": Decimal("0.0"),
+                    "realized_cost_ars": Decimal("0.0"),
+                    "realized_cost_usd": Decimal("0.0"),
                 }
 
             h = holdings_map[asset_id]
-            
-            # Determinamos costo de esta transacción en ambas monedas usando el fx_rate del momento
             fx = tx.fx_rate if tx.fx_rate and tx.fx_rate > 0 else Decimal("1.0")
 
-            if tx.currency == Currency.ARS:
-                cost_ars = tx.net_amount
-                cost_usd = (tx.net_amount / fx) if fx > 0 else Decimal("0.0")
-            else: # USD / USDT
-                cost_usd = tx.net_amount
-                cost_ars = tx.net_amount * fx
-
             if tx.transaction_type == TransactionType.BUY:
+                if tx.currency == Currency.ARS:
+                    cost_ars = tx.net_amount
+                    cost_usd = (tx.net_amount / fx) if fx > 0 else Decimal("0.0")
+                else: # USD / USDT
+                    cost_usd = tx.net_amount
+                    cost_ars = tx.net_amount * fx
+
                 h["quantity"] += tx.quantity
                 h["total_cost_ars"] += cost_ars
                 h["total_cost_usd"] += cost_usd
 
             elif tx.transaction_type == TransactionType.SELL:
-                if h["quantity"] > 0:
+                if tx.currency == Currency.ARS:
+                    proceeds_ars = tx.net_amount
+                    proceeds_usd = (tx.net_amount / fx) if fx > 0 else Decimal("0.0")
+                else: # USD / USDT
+                    proceeds_usd = tx.net_amount
+                    proceeds_ars = tx.net_amount * fx
+
+                if h["quantity"] > Decimal("0.0"):
                     # Reducción proporcional del costo base (PPP)
                     sell_ratio = min(tx.quantity / h["quantity"], Decimal("1.0"))
-                    h["total_cost_ars"] -= h["total_cost_ars"] * sell_ratio
-                    h["total_cost_usd"] -= h["total_cost_usd"] * sell_ratio
+                    cost_sold_ars = h["total_cost_ars"] * sell_ratio
+                    cost_sold_usd = h["total_cost_usd"] * sell_ratio
+
+                    realized_gain_ars = proceeds_ars - cost_sold_ars
+                    realized_gain_usd = proceeds_usd - cost_sold_usd
+
+                    h["total_cost_ars"] -= cost_sold_ars
+                    h["total_cost_usd"] -= cost_sold_usd
+                    h["quantity"] -= tx.quantity
+
+                    h["realized_pnl_ars"] += realized_gain_ars
+                    h["realized_pnl_usd"] += realized_gain_usd
+                    h["realized_cost_ars"] += cost_sold_ars
+                    h["realized_cost_usd"] += cost_sold_usd
+
+                    total_realized_pnl_ars += realized_gain_ars
+                    total_realized_pnl_usd += realized_gain_usd
+                    total_realized_cost_ars += cost_sold_ars
+                    total_realized_cost_usd += cost_sold_usd
+                else:
                     h["quantity"] -= tx.quantity
 
         # Filtrar activos con tenencia remanente positiva (> 0)
         active_holdings = [h for h in holdings_map.values() if h["quantity"] > Decimal("0.00000001")]
+        # Posiciones totalmente cerradas que registraron ventas
+        closed_holdings = [
+            h for h in holdings_map.values() 
+            if h["quantity"] <= Decimal("0.00000001") and (h["realized_cost_usd"] > 0 or h["realized_cost_ars"] > 0)
+        ]
+
+        summary_realized = {
+            "realized_pnl_usd": total_realized_pnl_usd,
+            "realized_pnl_ars": total_realized_pnl_ars,
+            "realized_cost_usd": total_realized_cost_usd,
+            "realized_cost_ars": total_realized_cost_ars,
+        }
+
+        return active_holdings, closed_holdings, summary_realized
+
+    @classmethod
+    def calculate_holdings(cls, db: Session, portfolio_id: int) -> List[Dict[str, Any]]:
+        active_holdings, _, _ = cls.calculate_positions_and_pnl(db, portfolio_id)
         return active_holdings
 
     @classmethod
@@ -94,17 +147,18 @@ class PortfolioService:
         Descompone la rentabilidad en:
         - Rendimiento Nominal en ARS (afectado por inflación y devaluación).
         - Rendimiento Real en USD (aislando la devaluación mediante el tipo de cambio financiero seleccionado).
+        - Acumulación de Ganancias/Pérdidas Realizadas en ventas cerradas + Ganancias Latentes abiertas.
         """
         current_fx_rate = MarketDataService.get_latest_fx_rate(db, fx_type) or Decimal("1200.0")
-        raw_holdings = cls.calculate_holdings(db, portfolio_id)
+        active_holdings, closed_holdings, realized_summary = cls.calculate_positions_and_pnl(db, portfolio_id)
 
         holdings_summary = []
-        total_value_usd = Decimal("0.0")
-        total_cost_usd = Decimal("0.0")
-        total_value_ars = Decimal("0.0")
-        total_cost_ars = Decimal("0.0")
+        open_value_usd = Decimal("0.0")
+        open_cost_usd = Decimal("0.0")
+        open_value_ars = Decimal("0.0")
+        open_cost_ars = Decimal("0.0")
 
-        for h in raw_holdings:
+        for h in active_holdings:
             asset: Asset = h["asset"]
             qty = h["quantity"]
             cost_ars = h["total_cost_ars"]
@@ -165,28 +219,74 @@ class PortfolioService:
                 "pnl_pct_ars": float(round(pnl_pct_ars, 2)),
             })
 
-            total_value_usd += current_market_usd
-            total_cost_usd += cost_usd
-            total_value_ars += current_market_ars
-            total_cost_ars += cost_ars
+            open_value_usd += current_market_usd
+            open_cost_usd += cost_usd
+            open_value_ars += current_market_ars
+            open_cost_ars += cost_ars
 
-        total_pnl_usd = total_value_usd - total_cost_usd
-        total_pnl_ars = total_value_ars - total_cost_ars
-        total_pnl_pct_usd = (total_pnl_usd / total_cost_usd * Decimal("100")) if total_cost_usd > 0 else Decimal("0.0")
-        total_pnl_pct_ars = (total_pnl_ars / total_cost_ars * Decimal("100")) if total_cost_ars > 0 else Decimal("0.0")
+        # Detalle de posiciones cerradas con ganancias realizadas
+        closed_summary = []
+        for ch in closed_holdings:
+            asset: Asset = ch["asset"]
+            c_cost_usd = ch["realized_cost_usd"]
+            c_pnl_usd = ch["realized_pnl_usd"]
+            c_cost_ars = ch["realized_cost_ars"]
+            c_pnl_ars = ch["realized_pnl_ars"]
+
+            c_pct_usd = (c_pnl_usd / c_cost_usd * Decimal("100")) if c_cost_usd > 0 else Decimal("0.0")
+            c_pct_ars = (c_pnl_ars / c_cost_ars * Decimal("100")) if c_cost_ars > 0 else Decimal("0.0")
+
+            closed_summary.append({
+                "asset_id": asset.id,
+                "ticker": asset.ticker,
+                "name": asset.name,
+                "asset_class": asset.asset_class.value if hasattr(asset.asset_class, "value") else str(asset.asset_class),
+                "realized_cost_usd": float(round(c_cost_usd, 2)),
+                "realized_pnl_usd": float(round(c_pnl_usd, 2)),
+                "pnl_pct_usd": float(round(c_pct_usd, 2)),
+                "realized_cost_ars": float(round(c_cost_ars, 2)),
+                "realized_pnl_ars": float(round(c_pnl_ars, 2)),
+                "pnl_pct_ars": float(round(c_pct_ars, 2)),
+            })
+
+        unrealized_pnl_usd = open_value_usd - open_cost_usd
+        unrealized_pnl_ars = open_value_ars - open_cost_ars
+
+        realized_pnl_usd = realized_summary["realized_pnl_usd"]
+        realized_pnl_ars = realized_summary["realized_pnl_ars"]
+        realized_cost_usd = realized_summary["realized_cost_usd"]
+        realized_cost_ars = realized_summary["realized_cost_ars"]
+
+        # Rendimiento Total = Ganancias/Pérdidas Realizadas en Ventas + Latentes en Tenencias Abiertas
+        total_pnl_usd = unrealized_pnl_usd + realized_pnl_usd
+        total_pnl_ars = unrealized_pnl_ars + realized_pnl_ars
+
+        # Base de costo total invertida (posiciones abiertas + posiciones ya cerradas)
+        total_invested_cost_usd = open_cost_usd + realized_cost_usd
+        total_invested_cost_ars = open_cost_ars + realized_cost_ars
+
+        total_pnl_pct_usd = (total_pnl_usd / total_invested_cost_usd * Decimal("100")) if total_invested_cost_usd > 0 else Decimal("0.0")
+        total_pnl_pct_ars = (total_pnl_ars / total_invested_cost_ars * Decimal("100")) if total_invested_cost_ars > 0 else Decimal("0.0")
 
         return {
             "portfolio_id": portfolio_id,
             "valuation_fx_type": fx_type.value if hasattr(fx_type, "value") else str(fx_type),
             "fx_rate_applied": float(current_fx_rate),
-            "total_value_usd": float(round(total_value_usd, 2)),
-            "total_cost_usd": float(round(total_cost_usd, 2)),
+            "total_value_usd": float(round(open_value_usd, 2)),
+            "total_cost_usd": float(round(open_cost_usd, 2)),
+            "total_invested_cost_usd": float(round(total_invested_cost_usd, 2)),
+            "unrealized_pnl_usd": float(round(unrealized_pnl_usd, 2)),
+            "realized_pnl_usd": float(round(realized_pnl_usd, 2)),
             "total_pnl_usd": float(round(total_pnl_usd, 2)),
             "total_pnl_pct_usd": float(round(total_pnl_pct_usd, 2)),
-            "total_value_ars": float(round(total_value_ars, 2)),
-            "total_cost_ars": float(round(total_cost_ars, 2)),
+            "total_value_ars": float(round(open_value_ars, 2)),
+            "total_cost_ars": float(round(open_cost_ars, 2)),
+            "total_invested_cost_ars": float(round(total_invested_cost_ars, 2)),
+            "unrealized_pnl_ars": float(round(unrealized_pnl_ars, 2)),
+            "realized_pnl_ars": float(round(realized_pnl_ars, 2)),
             "total_pnl_ars": float(round(total_pnl_ars, 2)),
             "total_pnl_pct_ars": float(round(total_pnl_pct_ars, 2)),
             "holdings": holdings_summary,
+            "closed_positions": closed_summary,
             "calculated_at": datetime.now(timezone.utc).isoformat(),
         }
