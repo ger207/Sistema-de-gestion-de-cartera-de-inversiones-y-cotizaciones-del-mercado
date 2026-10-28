@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.portfolio import Portfolio, Account
+from app.models.risk import PortfolioRiskSnapshot, CryptoFuturesPosition
 from app.models.enums import FxRateType, AccountType
 from app.schemas.portfolio import PortfolioCreate, PortfolioResponse, AccountCreate, AccountResponse
 from app.services.portfolio_service import PortfolioService
@@ -60,3 +61,29 @@ def get_valuation(
         raise HTTPException(status_code=404, detail="Cartera no encontrada")
 
     return PortfolioService.get_portfolio_valuation(db, portfolio_id, fx_type=fx_type)
+
+@router.delete("/{portfolio_id}", status_code=status.HTTP_200_OK, summary="Eliminar una cartera")
+def delete_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
+    """
+    Elimina permanentemente una cartera y todas sus cuentas, transacciones
+    y registros de riesgo asociados de forma segura.
+    """
+    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+    if not portfolio:
+        raise HTTPException(status_code=404, detail="Cartera no encontrada")
+
+    portfolio_name = portfolio.name
+
+    # 1. Eliminar snapshots de riesgo asociados a esta cartera
+    db.query(PortfolioRiskSnapshot).filter(PortfolioRiskSnapshot.portfolio_id == portfolio_id).delete(synchronize_session=False)
+
+    # 2. Eliminar posiciones de futuros asociadas a las cuentas de la cartera
+    account_ids = [acc.id for acc in portfolio.accounts]
+    if account_ids:
+        db.query(CryptoFuturesPosition).filter(CryptoFuturesPosition.account_id.in_(account_ids)).delete(synchronize_session=False)
+
+    # 3. Eliminar la cartera (con cascade="all, delete-orphan", SQLAlchemy elimina cuentas y transacciones)
+    db.delete(portfolio)
+    db.commit()
+
+    return {"message": f"Cartera '{portfolio_name}' eliminada con éxito", "id": portfolio_id}

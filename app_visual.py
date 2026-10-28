@@ -101,6 +101,16 @@ def post_api(endpoint: str, payload: dict) -> Optional[requests.Response]:
         return None
 
 
+def delete_api(endpoint: str) -> Optional[requests.Response]:
+    """Realiza una petición DELETE al backend FastAPI."""
+    try:
+        response = requests.delete(f"{API_BASE_URL}{endpoint}", timeout=15)
+        return response
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error de conexión con el backend: {e}")
+        return None
+
+
 # ==============================================================================
 # MOTOR INTELIGENTE DE AUTODETECCIÓN DE INSTRUMENTO
 # ==============================================================================
@@ -220,6 +230,9 @@ if "selected_portfolio_id" not in st.session_state or st.session_state["selected
 st.sidebar.image("https://img.icons8.com/fluency/96/bullish.png", width=64)
 st.sidebar.title("Gestor de Carteras")
 
+if "portfolio_deleted_banner" in st.session_state:
+    st.sidebar.success(st.session_state.pop("portfolio_deleted_banner"))
+
 portfolio_ids = [p["id"] for p in portfolios]
 current_p_index = portfolio_ids.index(st.session_state["selected_portfolio_id"])
 
@@ -275,15 +288,62 @@ with st.sidebar.expander("➕ Crear Nueva Cartera", expanded=False):
             else:
                 st.sidebar.error("Error al crear la cartera.")
 
+# Expander para eliminar una cartera
+with st.sidebar.expander("🗑️ Eliminar Cartera", expanded=False):
+    del_default_idx = portfolio_ids.index(selected_p_id) if selected_p_id in portfolio_ids else 0
+    p_to_del_id = st.selectbox(
+        "Cartera a eliminar:",
+        options=portfolio_ids,
+        index=del_default_idx,
+        format_func=lambda pid: portfolio_dict[pid]["name"],
+        key="portfolio_delete_selector"
+    )
+    p_to_del_name = portfolio_dict[p_to_del_id]["name"]
+    st.caption(f"⚠️ Se eliminará permanentemente la cartera **'{p_to_del_name}'** y todas sus operaciones registradas.")
+    confirm_del = st.checkbox(
+        "Confirmo la eliminación definitiva",
+        key=f"chk_del_{p_to_del_id}"
+    )
+    if st.button("🗑️ Eliminar Cartera Definitivamente", type="primary", use_container_width=True, disabled=not confirm_del, key=f"btn_exec_del_{p_to_del_id}"):
+        with st.spinner(f"Eliminando {p_to_del_name}..."):
+            del_res = delete_api(f"/portfolios/{p_to_del_id}")
+            if del_res and del_res.status_code in [200, 204]:
+                st.session_state["portfolio_deleted_banner"] = f"¡Cartera '{p_to_del_name}' eliminada con éxito!"
+                if st.session_state.get("selected_portfolio_id") == p_to_del_id:
+                    st.session_state.pop("selected_portfolio_id", None)
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.sidebar.error("Error al intentar eliminar la cartera en el servidor.")
+
+# ------------------------------------------------------------------------------
+# FORMULARIO DE NUEVA OPERACIÓN (CON RESET AUTOMÁTICO DE CAMPOS)
+# ------------------------------------------------------------------------------
 st.sidebar.markdown("---")
 st.sidebar.subheader("➕ Nueva Operación")
 st.sidebar.caption(f"Operando en: **{active_portfolio['name']}**")
 
-with st.sidebar.form(key="transaction_form", clear_on_submit=False):
+# Notificación de éxito persistente tras el rerun
+if "tx_feedback_success" in st.session_state:
+    st.sidebar.success(st.session_state.pop("tx_feedback_success"))
+
+# Si el usuario cambió de cartera activa, reiniciar el formulario a valores limpios
+if st.session_state.get("prev_selected_portfolio_id") != selected_p_id:
+    st.session_state["prev_selected_portfolio_id"] = selected_p_id
+    st.session_state["tx_form_counter"] = st.session_state.get("tx_form_counter", 1) + 1
+
+if "tx_form_counter" not in st.session_state:
+    st.session_state["tx_form_counter"] = 1
+
+form_id = st.session_state["tx_form_counter"]
+
+with st.sidebar.form(key=f"transaction_form_{form_id}", clear_on_submit=False):
     # 1. Entrada inteligente de Ticker (SIN selector manual de clase)
     ticker_input = st.text_input(
         "Ticker / Símbolo:",
+        value="",
         placeholder="Ej: AAPL, GGAL, AL30, BTC...",
+        key=f"tx_ticker_{form_id}",
         help="Escribe el ticker. El sistema detectará automáticamente si es CEDEAR, Acción Merval, Bono o Cripto."
     ).strip().upper()
 
@@ -299,14 +359,30 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
     tx_type = st.selectbox(
         "Tipo de Operación:",
         options=["BUY", "SELL"],
-        format_func=lambda x: "Compra (BUY)" if x == "BUY" else "Venta (SELL)"
+        index=0,
+        format_func=lambda x: "Compra (BUY)" if x == "BUY" else "Venta (SELL)",
+        key=f"tx_type_{form_id}"
     )
     
     col_q, col_p = st.columns(2)
     with col_q:
-        quantity = st.number_input("Cantidad:", min_value=0.0, value=0.0, step=1.0, format="%.4f")
+        quantity = st.number_input(
+            "Cantidad:",
+            min_value=0.0,
+            value=0.0,
+            step=1.0,
+            format="%.4f",
+            key=f"tx_qty_{form_id}"
+        )
     with col_p:
-        price = st.number_input("Precio Unitario:", min_value=0.0, value=0.0, step=100.0, format="%.2f")
+        price = st.number_input(
+            "Precio Unitario:",
+            min_value=0.0,
+            value=0.0,
+            step=100.0,
+            format="%.2f",
+            key=f"tx_price_{form_id}"
+        )
 
     col_cur, col_fee_pct = st.columns(2)
     with col_cur:
@@ -314,6 +390,7 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
             "Moneda:",
             options=["ARS", "USD", "USDT"],
             index=0 if default_currency == "ARS" else 1,
+            key=f"tx_curr_{form_id}",
             help="Moneda en la que se pacta y liquida la transacción."
         )
     with col_fee_pct:
@@ -325,6 +402,7 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
             value=0.50,
             step=0.05,
             format="%.2f",
+            key=f"tx_fee_{form_id}",
             help="Porcentaje de arancel cobrado por tu broker o exchange."
         )
 
@@ -341,7 +419,7 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
             f"**Total Estimado:** {currency} \\${estimated_net:,.2f}"
         )
 
-    notes = st.text_input("Notas (Opcional):", placeholder="Ej: Compra mensual DCA")
+    notes = st.text_input("Notas (Opcional):", value="", placeholder="Ej: Compra mensual DCA", key=f"tx_notes_{form_id}")
 
     submit_button = st.form_submit_button("🚀 Registrar Transacción", use_container_width=True)
 
@@ -399,7 +477,8 @@ with st.sidebar.form(key="transaction_form", clear_on_submit=False):
 
             res = post_api("/transactions/", tx_payload)
             if res and res.status_code in [200, 201]:
-                st.sidebar.success(f"¡Transacción de {normalized_ticker} registrada con éxito!")
+                st.session_state["tx_form_counter"] = form_id + 1
+                st.session_state["tx_feedback_success"] = f"¡Transacción de {normalized_ticker} registrada con éxito!"
                 st.cache_data.clear()
                 st.rerun()
             else:
@@ -489,7 +568,7 @@ with col_kpi3:
         value=f"{currency_symbol} {total_pnl:,.2f}",
         delta=f"{pnl_pct:+.2f}%",
         delta_color="normal",
-        help=f"Realizado (Ventas): {currency_symbol} {realized_pnl:+,.2f} | No Realizado (Tenencias): {currency_symbol} {unrealized_pnl:+,.2f}"
+        help=f"Realizado (Ventas): {'USD' if is_usd else 'ARS'} {realized_pnl:+,.2f} | No Realizado (Tenencias): {'USD' if is_usd else 'ARS'} {unrealized_pnl:+,.2f}"
     )
 
 with col_kpi4:
@@ -499,10 +578,11 @@ with col_kpi4:
         help="Tipo de cambio financiero aplicado para la conversión bimonetaria."
     )
 
+curr_label = "USD" if is_usd else "ARS"
 st.caption(
     f"📈 **Desglose de Rendimiento Total:** "
-    f"Realizado en Ventas: **{currency_symbol} {realized_pnl:+,.2f}** | "
-    f"No Realizado (Tenencias Abiertas): **{currency_symbol} {unrealized_pnl:+,.2f}**"
+    f"Realizado en Ventas: **{curr_label} \\${realized_pnl:+,.2f}** &nbsp;|&nbsp; "
+    f"No Realizado (Tenencias Abiertas): **{curr_label} \\${unrealized_pnl:+,.2f}**"
 )
 
 
@@ -898,7 +978,7 @@ with tab_quotes:
                         value=f"${p_usd:,.2f} USD",
                         delta=f"{chg:+.2f}% (24h)"
                     )
-                    st.caption(f"💵 Equivalente en ARS: **${p_ars:,.2f}** (CCL: ${ccl_rate_used:,.2f})")
+                    st.caption(f"💵 Equivalente en ARS: **\\${p_ars:,.2f}** (CCL: \\${ccl_rate_used:,.2f})")
 
             st.markdown("---")
 
@@ -1289,20 +1369,20 @@ with tab_risk:
 
     if not sl_is_safe:
         st.error(
-            f"⚠️ **Peligro de Liquidación:** El Stop-Loss (${sl_price:,.2f}) está fijado por "
-            f"{'debajo' if is_long else 'encima'} del Precio de Liquidación (${liquidation_price:,.2f}). "
+            f"⚠️ **Peligro de Liquidación:** El Stop-Loss (\\${sl_price:,.2f}) está fijado por "
+            f"{'debajo' if is_long else 'encima'} del Precio de Liquidación (\\${liquidation_price:,.2f}). "
             f"La posición será liquidada por el exchange antes de que el Stop-Loss pueda ejecutarse."
         )
     else:
         st.success(
             f"✅ **Stop-Loss Válido:** Tu Stop-Loss se ejecutará con un margen de seguridad de "
-            f"${abs(sl_price - liquidation_price):,.2f} USD antes de alcanzar la liquidación forzosa."
+            f"\\${abs(sl_price - liquidation_price):,.2f} USD antes de alcanzar la liquidación forzosa."
         )
 
     # 5. Tabla comparativa de sensibilidad según apalancamiento
     st.markdown("---")
     st.markdown("#### 🔬 Tabla Comparativa de Apalancamientos (Sensibilidad al Riesgo)")
-    st.caption("Proyección cuantitativa para el mismo margen aportado ($" + f"{initial_margin:,.2f} USD):")
+    st.caption(f"Proyección cuantitativa para el mismo margen aportado (\\${initial_margin:,.2f} USD):")
 
     leverage_levels = [2, 5, 10, 20, 25, 50]
     comp_rows = []
